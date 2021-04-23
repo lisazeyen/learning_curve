@@ -242,7 +242,7 @@ def cumulative_cost_curve(cumulative_capacity, learning_rate, c0, initial_capaci
     # calculate alpha
     alpha = math.log10(1 / (1-learning_rate)) / math.log10(2)
 
-    cum_cost =  1/(1-alpha) * (c0 * cumulative_capacity * ((cumulative_capacity/initial_capacity)**-alpha))
+    cum_cost =  (1/(1-alpha)) * c0 * cumulative_capacity * ((cumulative_capacity/initial_capacity)**-alpha)
 
     return cum_cost
 
@@ -282,8 +282,10 @@ def piecewise_linear(x, y, segments, learning_rate, c0, e0):
                    linearisation
     Returns:
     ----------
-        fit      : pd.Series(y_fit, index=x_fit)
+        fit      : pd.DataFrame(columns=[x_fit, y_fit],
+                                index=interpolation points = (line segments + 1))
     """
+    # TODO double check with Barretos formula
     total = len(x)
     factor = 0
     x_index = [x.index[0]]
@@ -294,9 +296,11 @@ def piecewise_linear(x, y, segments, learning_rate, c0, e0):
     x_index.append(x.index[-1])
 
     x_fit = x.loc[x_index]
-    y_fit = experience_curve(x_fit.values, learning_rate, c0, e0)
+    y_fit = x_fit.apply(lambda x: cumulative_cost_curve(x, learning_rate, c0, e0))
+    fit = pd.concat([x_fit, y_fit], axis=1).reset_index(drop=True)
+    fit.columns = ["x_fit", "y_fit"]
 
-    return pd.DataFrame(y_fit, index=x_fit.index.values)
+    return fit
 
 
 def experience_curve(cumulative_capacity, learning_rate, c0, initial_capacity=1):
@@ -361,6 +365,37 @@ def define_learning_binaries(n, snapshots, segments=5):
     define_binaries(n, (investments, multi_i), 'Carrier', 'learning')
 
 
+def get_linear_interpolation_points(n, x_low, x_high, segments):
+    """
+    get x and y position of piece-wise linearisation of cumulative cost
+    function
+    """
+    # (1) define capacity range
+    x = pd.DataFrame(np.linspace(x_low, x_high, 1000),
+                             columns = x_low.index)
+    # y postion on learning curve
+    y = pd.DataFrame(index=x.index, columns=x.columns)
+    # y position on cumulaitve cost function
+    y_cum = pd.DataFrame(index=x.index, columns=x.columns)
+
+    # piece-wise linearisation for all learning technologies
+    for carrier in x.columns:
+        learning_rate = n.carriers.loc[carrier, "learning_rate"]
+        e0 = n.carriers.loc[carrier, "global_capacity"]
+        c0 = n.generators.groupby(n.generators.carrier).first().loc[carrier, "capital_cost"]
+        y[carrier] = x[carrier].apply(lambda x: experience_curve(x, learning_rate, c0, e0))
+        y_cum[carrier] = x[carrier].apply(lambda x: cumulative_cost_curve(x, learning_rate, c0, e0))
+
+    # get progressive cumulative investment costs
+    y_cum = y_cum - y_cum.iloc[0]
+
+    # get interpolation points
+    points = piecewise_linear(x, y_cum, segments, learning_rate, c0, e0)
+
+    return points
+# # ---------------------------------------------------------------------------
+##############################################################################
+
 def define_learning_binary_constraint(n, snapshots):
     """
     constraint for every tech/carrier and investment period select only one
@@ -399,7 +434,6 @@ def x_position_learning_curve(n, snapshots, segments=5):
     x_low = n.carriers.loc[learn_i, "global_capacity"]
     # TODO could be increase by fraction of considered region/world??
     x_high = 10 * x_low
-
     # check that upper bound is not infinity
     if any(x_high.isin([np.inf])):
         logger.error("p_nom_max of generators with technology learning is "
@@ -408,21 +442,8 @@ def x_position_learning_curve(n, snapshots, segments=5):
 
 
     # get interpolation points (number of points = line segments + 1)
+    points = get_linear_interpolation_points(n, x_low, x_high, segments)
 
-    # (1) get x and y points on learning curve
-    x = pd.DataFrame(np.linspace(x_low, x_high, 1000),
-                             columns = x_low.index)
-    y = pd.DataFrame(index=x.index, columns=x.columns)
-    y_cum = pd.DataFrame(index=x.index, columns=x.columns)
-    for carrier in x.columns:
-        learning_rate = n.carriers.loc[carrier, "learning_rate"]
-        e0 = n.carriers.loc[carrier, "global_capacity"]
-        c0 = n.generators.groupby(n.generators.carrier).first().loc[carrier, "capital_cost"]
-        y[carrier] = x[carrier].apply(lambda x: experience_curve(x, learning_rate, c0, e0))
-        y_cum[carrier] = x[carrier].apply(lambda x: cumulative_cost_curve(x, learning_rate, c0, e0))
-
-    # get progressive cumulative investment costs
-    y_cum = y_cum - y_cum.iloc[0]
 
 
 def learning(network, sns):
