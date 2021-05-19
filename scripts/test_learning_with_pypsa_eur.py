@@ -82,13 +82,10 @@ n.set_snapshots(snapshots)
 
 sns=n.snapshots
 
-
-# set investment period weightings
-# last year is weighted by 1
-n.investment_period_weightings.loc[:, "energy_weighting"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(1).values
 # set investment_weighting
-n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["energy_weighting"], r)
 n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(1).values
+n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], r)
+
 
 n.investment_period_weightings
 
@@ -144,7 +141,9 @@ for year in years:
 
 n.generators[(n.generators.carrier=="solar") & (n.generators.bus=="DE0 0")]
 
-
+# increase load
+weight = pd.Series(np.arange(1.,2.0, 1/len(years)), index=years)
+n.loads_t.p_set = n.loads_t.p_set.mul(weight, level=0, axis="index")
 # 3.) build year / transmission expansion for AC Lines and DC Links
 
 # later_lines = n.lines.iloc[::5].index
@@ -198,7 +197,9 @@ p_nom_max_inv_p = pd.DataFrame(np.repeat([p_nom_max_limit.values],
 n.global_constraints
 
 n.carriers.loc["solar", "learning_rate"] = 0.4
-n.carriers.loc["solar", "global_capacity"] = 1e9
+n.carriers.loc["solar", "global_capacity"] = 1e6
+n.carriers.loc["solar", "max_capacity"] = 1e7
+n.carriers.loc["solar", "initial_cost"] = n.generators[n.generators.carrier=="solar"]["capital_cost"].mean()
 
 #%%
 n.lopf(pyomo=False, solver_name="gurobi", skip_objective=True,

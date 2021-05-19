@@ -11,36 +11,17 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-os.chdir("/home/ws/bw0928/Dokumente/PyPSA")
-sys.path = [os.pardir] + sys.path
-import pypsa
+import pypsa_learning as pypsa
 
 print(pypsa.__file__)
 
-solver_name="gurobi"
-solver_io="python"
-skip_pre=False
-extra_functionality=None
-solver_logfile=None
-solver_options={}
-keep_files=False
-formulation="angles"
-ptdf_tolerance=0.
-free_memory={}
-extra_postprocessing=None
-solver_dir=None
-warmstart = False
-store_basis = False
 
-lookup = pd.read_csv('pypsa/variables.csv',
-                    index_col=['component', 'variable'])
-
-from pypsa.pf import (_as_snapshots, get_switchable_as_dense as get_as_dense)
-from pypsa.descriptors import (get_bounds_pu, get_extendable_i, get_non_extendable_i,
+from pypsa_learning.pf import (_as_snapshots, get_switchable_as_dense as get_as_dense)
+from pypsa_learning.descriptors import (get_bounds_pu, get_extendable_i, get_non_extendable_i,
                           expand_series, nominal_attrs, additional_linkports, Dict,
                           get_active_assets, get_switchable_as_iter)
 
-from pypsa.linopt import (linexpr, write_bound, write_constraint, write_objective,
+from pypsa_learning.linopt import (linexpr, write_bound, write_constraint, write_objective,
                      set_conref, set_varref, get_con, get_var, join_exprs,
                      run_and_read_cbc, run_and_read_gurobi, run_and_read_glpk,
                      run_and_read_cplex, run_and_read_xpress,
@@ -56,6 +37,8 @@ from tempfile import mkstemp
 import logging
 logger = logging.getLogger(__name__)
 
+lookup = pd.read_csv(os.path.join(os.path.dirname(__file__), 'variables.csv'),
+                     index_col=['component', 'variable'])
 
 # Functions / helpers ---------------------------------------------------------
 def get_cap_per_investment_period(n, c):
@@ -96,147 +79,7 @@ def get_investment_weighting(energy_weighting, r=0.01):
     return pd.concat([start,end], axis=1).apply(lambda x: sum([get_social_discount(t,r)
                                                                for t in range(int(x[0]), int(x[1]))]),
                                                 axis=1)
-#%%
-n = pypsa.Network()
 
-
-# ## How to set snapshots and investment periods
-# First set some parameters
-# years of investment
-years = [2020, 2030, 2040, 2050]
-investment = pd.DatetimeIndex(['{}-01-01 00:00'.format(year) for year in years])
-# temporal resolution
-freq = "2190"
-# snapshots (format -> DatetimeIndex)
-snapshots = pd.DatetimeIndex([])
-snapshots = snapshots.append([(pd.date_range(start ='{}-01-01 00:00'.format(year),
-                                               freq ='{}H'.format(freq),
-                                               periods=8760/float(freq))) for year in years])
-
-
-# (b) or as a pandas MultiIndex, this will also change the investment_periods
-# to the first level of the pd.MultiIndex
-investment_helper = investment.union(pd.Index([snapshots[-1] + pd.Timedelta(days=1)]))
-map_dict = {years[period] :
-            snapshots[(snapshots>=investment_helper[period]) &
-                      (snapshots<investment_helper[period+1])]
-            for period in range(len(investment))}
-
-multiindex = pd.MultiIndex.from_tuples([(name, l) for name, levels in
-                                        map_dict.items() for l in levels])
-
-
-n.set_snapshots(multiindex)
-
-
-r = 0.01 # social discountrate
-# set energy weighting -> last year is weighted by 1
-n.investment_period_weightings.loc[:, 'time_weightings'] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(1)
-# n.investment_period_weightings.loc[:, 'generator_weightings'] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(1)
-# set investment_weighting
-n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], r)
-print(n.investment_period_weightings)
-
-
-n.add("Bus",
-      "bus 0")
-
-# add some generators
-p_nom_max = pd.Series((np.random.uniform() for sn in range(len(n.snapshots))),
-                  index=n.snapshots, name="solar 2020")
-
-
-# renewable
-for year in years:
-    n.add("Generator",
-          "solar {}".format(year),
-           bus="bus 0",
-           build_year=year,
-           lifetime=31,
-           marginal_cost=0.1,
-           capital_cost=5,
-           p_max_pu=p_nom_max,
-           carrier="solar",
-           # p_nom_max=500,
-           p_nom_extendable=True)
-
-for year in years:
-    n.add("Generator",
-          "wind {}".format(year),
-            bus="bus 0",
-            build_year=year,
-            lifetime=31,
-            marginal_cost=0.1,
-            capital_cost=6,
-            p_max_pu=p_nom_max.shift().fillna(0.1),
-            carrier="wind",
-            # p_nom_max=500,
-            p_nom_extendable=True)
-
-# conventional
-n.add("Generator",
-      "conventional 2020",
-      bus="bus 0",
-      build_year=2020,
-      lifetime=31,
-      marginal_cost=0.1,
-      capital_cost=10,
-      carrier="OCGT",
-      p_nom_extendable=True)
-
-n.add("Store",
-      "battery 2020",
-      bus="bus 0",
-      build_year=2020,
-      lifetime=31,
-      marginal_cost=0.1,
-      carrier="battery",
-      capital_cost=100,
-      e_nom_extendable=True)
-
-n.add("Carrier",
-      "solar",
-      learning_rate=0.3,
-      global_capacity=100,
-      max_capacity=1e6,
-      initial_cost=100,) #633700)
-
-n.add("Carrier",
-      "wind",
-      learning_rate=0.2,
-      max_capacity=1e5,
-      initial_cost=90,
-      global_capacity=100) #633700)
-
-n.add("Carrier",
-      "OCGT",
-      co2_emissions=3.,) #633700)
-
-# add a Load
-load_var =  pd.Series((100*np.random.uniform() for sn in range(len(n.snapshots))),
-                  index=n.snapshots, name="load")
-load_fix = pd.Series([250 for sn in range(len(n.snapshots))],
-                  index=n.snapshots, name="load")
-weight = pd.Series(np.linspace(1, 2, len(n.snapshots.levels[0])),
-                   index=n.snapshots.levels[0]).reindex(n.snapshots,level=0)
-
-#add a load at bus 2
-n.add("Load",
-      "load",
-      bus="bus 0",
-      p_set=load_fix*weight)
-
-
-# (a) add CO2 Budget constraint ----------------------------------------------
-n.add("GlobalConstraint",
-      "CO2Budget",
-      type="Budget",
-      carrier_attribute="co2_emissions", sense="<=",
-      constant=1e3)
-
-snapshots=n.snapshots
-path = "/home/ws/bw0928/Dokumente/learning_curve/results/prenetwork/single_bus.nc"
-# n.export_to_netcdf(path)
 #%%  LEARNING FUNCTIONS
 
 def learning_consistency_check(n):
@@ -692,7 +535,7 @@ def define_cumulative_capacity(n, x_low, x_high, investments, learn_i):
     define_constraints(n, lhs, '=', 0, 'Carrier', 'cum_cap_definition')
 
 
-def define_capacity_per_period(n, investments, multi_i, learn_i, points, segments):
+def define_capacity_per_period(n, investments, multi_i, learn_i, points, segments, snapshots):
     """
     defines variable 'cap_per_period' for new installed capacity per investment
     period and corresponding constraints.
@@ -843,7 +686,7 @@ def define_position_on_learning_curve(n, snapshots, segments=5):
     # -------------------------------------------------------------------------
     # define new installed capacity per period
     define_capacity_per_period(n, investments, multi_i, learn_i, points,
-                               segments)
+                               segments, snapshots)
 
     # ######## CUMULATIVE COST ################################################
     # ------- define cumulative cost -----------------------------------------
@@ -854,7 +697,7 @@ def define_position_on_learning_curve(n, snapshots, segments=5):
 
 
 
-def define_learning_objective(network, sns):
+def define_learning_objective(n, sns):
     """
     modify objective function to include technology learning for pyomo=False.
 
@@ -949,50 +792,3 @@ def add_learning(n, snapshots, segments=5):
 
 
 #%%
-rates = np.linspace(0.01, 0.99, 10)
-obj = pd.Series(index=rates)
-caps = pd.DataFrame(index=n.generators.index, columns=rates)
-p = {}
-for lr in rates:
-    n.carriers.loc["solar", "learning_rate"] = lr
-    n.carriers.loc["solar", "global_capacity"] = 500
-    n.carriers.loc["solar", "max_capacity"] = 6e3
-    n.carriers.loc["solar", "initial_cost"] = 12
-    n.lopf(pyomo=False, solver_name="gurobi", skip_objective=True,
-           multi_investment_periods=True,
-           extra_functionality=add_learning)
-    obj.loc[lr] = n.objective
-    n.generators.p_nom_opt.plot(kind="bar", title=lr)
-    caps[lr] = n.generators.p_nom_opt
-    p[lr] = n.generators_t.p
-#%%
-obj.plot(grid=True)
-plt.ylabel("objective function")
-plt.xlabel("learning rate")
-#%% debug
-import gurobipy
-m = gurobipy.read(problem_fn)
-m.optimize()
-m.computeIIS()
-m.write("/home/ws/bw0928/Dokumente/learning_curve/results/log/iis.ilp")
-#%%
-caps = get_cap_per_investment_period(n, "Generator")
-if not caps.empty:
-    ax = caps.plot(kind="bar", stacked=True, grid=True, title="installed capacities", width=5)
-    plt.ylabel("installed capacity \n [MW]")
-    plt.xlabel("investment period")
-    plt.legend(bbox_to_anchor=(1,1))
-
-total = pd.concat([
-           n.generators_t.p,
-           # n.storage_units_t.p,
-           # n.stores_t.p,
-           -1 * n.loads_t.p_set,
-           # -1 * pd.concat([n.links_t.p0, n.links_t.p1], axis=1).sum(axis=1).rename("Link losses"),
-           # -1 * pd.concat([n.lines_t.p0, n.lines_t.p1], axis=1).sum(axis=1).rename("Line losses")
-           ],axis=1)
-total = total.groupby(total.columns, axis=1).sum()
-total.plot(kind="bar", stacked=True, grid=True, title="Demand and Generation per snapshot")
-plt.ylabel("Demand and Generation")
-plt.xlabel("snapshot")
-plt.legend(bbox_to_anchor=(1,1))
