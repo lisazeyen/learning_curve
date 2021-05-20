@@ -493,7 +493,7 @@ class Network(Basic):
     def lopf(self, snapshots=None, pyomo=True, solver_name="glpk",
              solver_options={}, solver_logfile=None, formulation="kirchhoff",
              keep_files=False, extra_functionality=None,
-             multi_investment_periods=False, **kwargs):
+             multi_investment_periods=False, typical_period=False, **kwargs):
         """
         Linear optimal power flow for a group of snapshots.
 
@@ -600,7 +600,8 @@ class Network(Basic):
                 'solver_options': solver_options, 'formulation': formulation,
                 'extra_functionality': extra_functionality,
                 'solver_name': solver_name, 'solver_logfile': solver_logfile,
-                'multi_investment_periods': multi_investment_periods}
+                'multi_investment_periods': multi_investment_periods,
+                'typical_period': typical_period}
         args.update(kwargs)
 
         if not self.shunt_impedances.empty:

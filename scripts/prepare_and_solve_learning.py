@@ -19,6 +19,7 @@ from vresutils.costdata import annuity
 
 import pypsa_learning as pypsa
 from learning import add_learning
+from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
 
 
 print(pypsa.__file__)
@@ -27,7 +28,7 @@ print(pypsa.__file__)
 if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
-    snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-876H-learnsolarp0',clusters='37')
+    snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
 
 logger = logging.getLogger(__name__)
 #%%
@@ -267,6 +268,7 @@ global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
 
 opts = snakemake.wildcards.sector_opts.split('-')
 
+
 for o in opts:
     # learning
     if "learn" in o:
@@ -290,6 +292,26 @@ for o in opts:
         sn = int(m.group(0).split("sn")[0])
         n.set_snapshots(n.snapshots[::sn])
         n.snapshot_weightings *= sn
+    # typical periods
+    m = re.match(r'^\d+p\d\d+h', o, re.IGNORECASE)
+    if m is not None:
+        opts_t = snakemake.config['temporal_aggregation']
+        n_periods = int(o.split("p")[0])
+        hours = int(o.split("p")[1].split("h")[0])
+        clusterMethod = opts_t["clusterMethod"].replace("-", "_")
+        extremePeriodMethod = opts_t["extremePeriodMethod"].replace("-", "_")
+        kind = opts_t["kind"]
+
+        logger.info("---------------------------------------------")
+        logger.info("aggregrate network to {} periods with length {} hours.".format(n_periods, hours))
+        logger.info("Cluster method ", clusterMethod)
+        logger.info("extremePeriodMethod ", extremePeriodMethod)
+        logger.info("optimisation kind ", kind)
+        logger.info("-----------------------------------------------")
+
+        aggregate_snapshots(n, n_periods=n_periods, hours=hours, clusterMethod=clusterMethod,
+                    extremePeriodMethod=extremePeriodMethod)
+
 
 # For GlobalConstraint of the technical limit at each node, get the p_nom_max
 p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum()
@@ -444,6 +466,7 @@ config = snakemake.config['solving']
 solve_opts = config['options']
 solver_options = config['solver'].copy()
 solver_log = snakemake.log.solver
+solver_options["threads"] = snakemake.threads
 
 # MIPFocus = 3, MIPGap, MIRCuts=2 (agressive)
 
@@ -453,10 +476,12 @@ logging.basicConfig(filename=snakemake.log.python,
 with memory_logger(filename=getattr(snakemake.log, 'memory', None), interval=30.) as mem:
 
     n = prepare_network(n, solve_opts)
+    #%%
     n.lopf(pyomo=False, solver_name="gurobi", skip_objective=skip_objective,
            multi_investment_periods=True, solver_options=solver_options,
            solver_logfile=solver_log, keep_files=True,
-           extra_functionality=extra_functionality, keep_shadowprices=False)
+           extra_functionality=extra_functionality, keep_shadowprices=False,
+           typical_period=True)
 
     n.export_to_netcdf(snakemake.output[0])
 
