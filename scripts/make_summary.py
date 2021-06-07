@@ -100,6 +100,7 @@ def plot_cap_per_investment_period(n, c):
 
 def plot_generation(n, c):
     snakemake.config['plotting']['tech_colors']["load"] = "maroon"
+    snakemake.config['plotting']['tech_colors']["demand"] = "maroon"
     snakemake.config['plotting']['tech_colors']["Link losses"] = "red"
     snakemake.config['plotting']['tech_colors']["Line losses"] = "pink"
     tot = pd.concat([
