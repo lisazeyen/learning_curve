@@ -633,7 +633,7 @@ def define_global_constraints(n, sns):
             # get time period to which constraint applies
             inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else sns
             time_valid = (inv_valid if glc["investment_period"]=='' else
-                          pd.DatetimeIndex([glc["investment_period"]]))
+                          int(glc["investment_period"]))
             lhs +=  join_exprs(vals.loc[time_valid])
 
         # storage units
