@@ -39,14 +39,24 @@ override_component_attrs["Store"].loc["lifetime"] = ["float","years",np.nan,"lif
 
 #%%
 path_europe_network = "/home/ws/bw0928/Dokumente/pypsa-eur/networks/elec_s_37_ec_lv1.0_.nc"
+path_europe_network = "/home/ws/bw0928/Dokumente/pypsa-eur-sec/results/test-network/postnetworks/elec_s_37_lv1.0__Co2L0-168H-T-H-B-I-solar+p3-dist1_2030.nc"
 path_out = "/home/ws/bw0928/Dokumente/learning_curve/results/prenetworks/"
 country = ["DE"]
+
+not_remove = ['co2 atmosphere', 'co2 stored', 'EU gas', 'EU biogas',
+               'EU solid biomass', 'solid biomass for industry', 'gas for industry',
+               'EU oil', 'process emissions']
 
 n = pypsa.Network(path_europe_network,
                   override_component_attrs=override_component_attrs)
 
+n.buses.country = n.buses.index.str[:2]
 # drop other buses
-n.buses = n.buses[n.buses.country.isin(country + ["EU"])]
+to_drop = n.buses[~n.buses.country.isin(country + ["EU", "co2 atmosphere", "co2 stored"])].index
+to_drop = to_drop.difference(not_remove)
+drop_countries = n.buses.loc[to_drop].country.unique()
+for asset in to_drop:
+    n.remove("Bus", asset)
 
 # drop other buses in network components
 for component in (n.one_port_components | {"Load"} | n.branch_components):
@@ -55,12 +65,13 @@ for component in (n.one_port_components | {"Load"} | n.branch_components):
     if component in n.branch_components:
         to_drop = df[~(df.bus0.apply(lambda x: any(c in x for c in n.buses.index)) &
              df.bus1.apply(lambda x: any(c in x for c in n.buses.index)))].index
+        to_drop = to_drop.union(df[df.index.str[:2].isin(drop_countries)].index)
     else:
-        to_drop = df[~df.bus.isin(n.buses.index)].index
+        to_drop = df[~(df.bus.isin(n.buses.index) & df.index.str[:2].isin(country+["EU"]))].index
         df = df[df.bus.isin(n.buses.index)]
 
     for asset in to_drop:
         n.remove(component, asset)
 
-n.export_to_netcdf(path_out+"{}.nc".format(country))
+n.export_to_netcdf(path_out+"{}_sec.nc".format(country[0]))
 
