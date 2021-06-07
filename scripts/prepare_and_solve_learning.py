@@ -192,7 +192,6 @@ def update_wind_solar_costs(n,costs, years):
     """
     Update costs for wind and solar generators added with pypsa-eur to those
     cost in the planning year
-
     """
 
     #assign clustered bus
@@ -267,7 +266,6 @@ n.global_constraints.drop(n.global_constraints.index, inplace=True)
 global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
 
 opts = snakemake.wildcards.sector_opts.split('-')
-
 
 for o in opts:
     # learning
@@ -367,8 +365,8 @@ for year in years:
            efficiency=df.efficiency,
            p_max_pu=p_max_pu)
 
-
-update_wind_solar_costs(n,costs, years)
+if snakemake.config["costs"]["update_costs"]:
+    update_wind_solar_costs(n,costs, years)
 
 df = n.generators[n.generators.carrier=="OCGT"]
 # add OCGT
@@ -441,16 +439,18 @@ p_nom_max_inv_p = pd.DataFrame(np.repeat([p_nom_max_limit.values],
                                          len(sns.levels[0]), axis=0),
                                index=sns.levels[0], columns=p_nom_max_limit.index)
 
-for carrier in renewables:
-    nodes = p_nom_max_inv_p[carrier].columns
-    max_cap = p_nom_max_inv_p[carrier].iloc[0,:].rename(lambda x: "TechLimit " + x + " " +carrier)
-    n.madd("GlobalConstraint",
-          "TechLimit " + nodes + " " + carrier,
-          carrier_attribute=carrier,
-          sense="<=",
-          type="tech_capacity_expansion_limit",
-          bus=nodes,
-          constant=max_cap)
+if snakemake.config["tech_limit"]:
+    logger.info("set technical potential at each node")
+    for carrier in renewables:
+        nodes = p_nom_max_inv_p[carrier].columns
+        max_cap = p_nom_max_inv_p[carrier].iloc[0,:].rename(lambda x: "TechLimit " + x + " " +carrier)
+        n.madd("GlobalConstraint",
+              "TechLimit " + nodes + " " + carrier,
+              carrier_attribute=carrier,
+              sense="<=",
+              type="tech_capacity_expansion_limit",
+              bus=nodes,
+              constant=max_cap)
 
 
 
