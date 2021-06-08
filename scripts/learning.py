@@ -1,38 +1,28 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+#!/usr/bin/env python3
+"""Module for technology learning with PyPSA.
+
 Created on Thu Apr 22 16:21:27 2021
 
 @author: bw0928
 """
-import os, sys
+import os
 import pandas as pd
 import numpy as np
 import math
-import matplotlib.pyplot as plt
 
 import pypsa_learning as pypsa
 
 print(pypsa.__file__)
 
 
-from pypsa_learning.pf import (_as_snapshots, get_switchable_as_dense as get_as_dense)
-from pypsa_learning.descriptors import (get_bounds_pu, get_extendable_i, get_non_extendable_i,
-                          expand_series, nominal_attrs, additional_linkports, Dict,
-                          get_active_assets, get_switchable_as_iter)
+from pypsa_learning.pf import (get_switchable_as_dense as get_as_dense)
+from pypsa_learning.descriptors import (get_extendable_i, expand_series,
+                                        nominal_attrs, get_active_assets)
 
-from pypsa_learning.linopt import (linexpr, write_bound, write_constraint, write_objective,
-                     set_conref, set_varref, get_con, get_var, join_exprs,
-                     run_and_read_cbc, run_and_read_gurobi, run_and_read_glpk,
-                     run_and_read_cplex, run_and_read_xpress,
-                     define_constraints, define_variables, define_binaries,
-                     align_with_static_component)
-
-
-from numpy import inf
-
-import gc, time, os, re, shutil
-from tempfile import mkstemp
+from pypsa_learning.linopt import (linexpr, write_bound, write_objective,
+                      get_var, define_constraints, define_variables,
+                      define_binaries)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -213,7 +203,6 @@ def cumulative_cost_curve(cumulative_capacity, learning_rate, c0, initial_capaci
     return (1/(1-alpha)) * (cumulative_capacity*cost - initial_capacity * c0)
 
 
-
 def get_cumulative_cap_from_cum_cost(cumulative_cost, learning_rate, c0, e0):
     """Calculate cumulative capacity from given cumulative costs.
 
@@ -242,7 +231,6 @@ def get_cumulative_cap_from_cum_cost(cumulative_cost, learning_rate, c0, e0):
         return 10**a
 
     return ((cumulative_cost * (1-alpha) + c0*e0)/(c0*e0**alpha))**(1/(1-alpha))
-
 
 
 def piecewise_linear(y, segments, learning_rate, c0, e0, carrier):
@@ -296,7 +284,6 @@ def piecewise_linear(y, segments, learning_rate, c0, e0, carrier):
     return fit
 
 
-
 def get_linear_interpolation_points(n, x_low, x_high, segments):
     """Define interpolation points of the cumulative investment curve.
 
@@ -344,12 +331,14 @@ def get_linear_interpolation_points(n, x_low, x_high, segments):
 
     return points
 
+
 def get_slope(points):
     """Return the slope of the line segments."""
     point_distance = (points.shift() - points).shift(-1).dropna(axis=0)
 
     return (point_distance.xs("y_fit", level=1, axis=1)
             / point_distance.xs("x_fit", level=1, axis=1))
+
 
 def get_interception(points, slope):
     """Get interception point with cumulative cost (y) axis."""
@@ -761,7 +750,6 @@ def define_position_on_learning_curve(n, snapshots, segments=5):
     define_cost_per_period(n, points, investments, segments, learn_i)
 
 
-
 def define_learning_objective(n, sns):
     """Modify objective function to include technology learning for pyomo=False.
 
@@ -835,7 +823,6 @@ def define_learning_objective(n, sns):
         write_objective(n, terms)
 
 
-
 def add_learning(n, snapshots, segments=5):
     """Add technology learning to the lopf by piecewise linerarisation.
 
@@ -851,6 +838,3 @@ def add_learning(n, snapshots, segments=5):
     define_position_on_learning_curve(n, snapshots, segments)
     # define objective function with technology learning
     define_learning_objective(n, snapshots)
-
-
-#%%
