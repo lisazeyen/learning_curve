@@ -579,16 +579,19 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points,
     # cumulative capacity
     cum_cap = get_var(n, c, "cumulative_capacity")
 
-    # define variable new installed capacity 'cap' per period
+    # define upper bound for variable new installed capacity per period
     x_lb = define_bounds(points, "x_fit", "lower", investments, segments)
     x_ub = define_bounds(points, "x_fit", "upper", investments, segments)
-    cap_upper = x_ub.groupby(level=0, axis=1).max() - x_lb.groupby(level=0, axis=1).min()
+    # maximum new (local) installable capacity
+    cap_upper = (x_ub.groupby(level=0, axis=1).max()
+                 - x_lb.groupby(level=0, axis=1).min()).mul(global_factor)
+    # define variable for new installed capacity per period
     cap_per_period = define_variables(n, 0, cap_upper, c,
                            "cap_per_period", axes=[investments, learn_i])
 
     # cumulative capacity = initial capacity + sum_t (cap)
     lhs = linexpr((1, cum_cap),
-                  (-1, cap_per_period))
+                  (-1/global_factor, cap_per_period))
     lhs.iloc[1:] += linexpr((-1, cum_cap.shift().dropna()))
 
     rhs = pd.DataFrame(0.,index=investments, columns=learn_i)
@@ -680,19 +683,24 @@ def define_cost_per_period(n, points, investments, segments, learn_i):
     """
     c = "Carrier"
 
+    # fraction of global installed capacity
+    global_factor = expand_series(n.df(c).loc[learn_i, "global_factor"],
+                              investments).T
+
     # bounds  --------------------------------------
     y_lb = define_bounds(points, "y_fit", "lower", investments, segments)
     y_ub = define_bounds(points, "y_fit", "upper", investments, segments)
+    inv_upper = (y_ub.groupby(level=0, axis=1).max()
+                 - y_lb.groupby(level=0, axis=1).min()).mul(global_factor)
 
     # define variable for investment per period in technology ---------------
-    inv_upper = y_ub.groupby(level=0, axis=1).max() - y_lb.groupby(level=0, axis=1).min()
     inv = define_variables(n, 0, inv_upper, c,
                            "inv_per_period", axes=[investments, learn_i])
 
     cum_cost = get_var(n, c, "cumulative_cost")
     # inv = cumulative_cost(t) - cum_cost(t-1)
     lhs = linexpr((1, cum_cost),
-                  (-1, inv))
+                  (-1/global_factor, inv))
     lhs.iloc[1:] += linexpr((-1, cum_cost.shift().dropna()))
 
     rhs = pd.DataFrame(0.,index=investments, columns=learn_i)
@@ -816,7 +824,7 @@ def define_learning_objective(n, sns):
         terms = linexpr((cost_weighted, caps))
         write_objective(n, terms)
 
-        # (ii) assets with technology learning --------------------------------
+        # (ii) assets with technology learning -------------------------------
         if learn_assets.empty: continue
         cost_learning = get_var(n, "Carrier", "inv_per_period")
         terms = linexpr((expand_series(objective_w_investment, cost_learning.columns), cost_learning))
