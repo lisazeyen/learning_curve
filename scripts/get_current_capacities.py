@@ -78,3 +78,9 @@ fraction = cap_local.groupby(level=0).sum() / global_caps.loc[index]
 fraction.name = "Fraction of global installed capacity"
 fraction.to_csv(snakemake.output.fraction)
 
+
+# H2 electrolysis
+# https://www.researchgate.net/publication/321682272_Future_cost_and_performance_of_water_electrolysis_An_expert_elicitation_study
+# appendix figure B.1
+# IRENA 20 GW https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
+global_caps.loc["H2 electrolysis"] = 20*1e3  # figure in units GW_el

@@ -2,6 +2,8 @@
 
 import numpy as np
 import pandas as pd
+from vresutils.costdata import annuity
+
 
 #allow plotting without Xwindows
 import matplotlib
@@ -25,6 +27,44 @@ plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 #%%
+def prepare_costs(cost_file, discount_rate, lifetime):
+    """
+    prepare cost data
+    """
+    #set all asset costs and other parameters
+    costs = pd.read_csv(cost_file,index_col=list(range(2))).sort_index()
+
+    #correct units to MW and EUR
+    costs.loc[costs.unit.str.contains("/kW"),"value"]*=1e3
+
+    #min_count=1 is important to generate NaNs which are then filled by fillna
+    costs = costs.loc[:, "value"].unstack(level=1).groupby("technology").sum(min_count=1)
+    costs = costs.fillna({"CO2 intensity" : 0,
+                          "FOM" : 0,
+                          "VOM" : 0,
+                          "discount rate" : discount_rate,
+                          "efficiency" : 1,
+                          "fuel" : 0,
+                          "investment" : 0,
+                          "lifetime" : lifetime
+    })
+
+    costs["fixed"] = [(annuity(v["lifetime"],v["discount rate"])+v["FOM"]/100.)*v["investment"] for i,v in costs.iterrows()]
+    return costs
+
+def prepare_costs_all_years(years):
+    """
+    prepares cost data for multiple years
+    """
+    all_costs = {}
+
+    for year in years:
+        all_costs[year] = prepare_costs(snakemake.input.costs + "/costs_{}.csv".format(year),
+                              snakemake.config['costs']['discountrate'],
+                              snakemake.config['costs']['lifetime'])
+    return all_costs
+
+
 #consolidate and rename
 def rename_techs(label):
 
@@ -76,7 +116,7 @@ preferred_order = pd.Index(["transmission lines","hydroelectricity","hydro reser
 
 def plot_costs():
 
-    cost_df = pd.read_csv(snakemake.input.costs,index_col=list(range(3)),
+    cost_df = pd.read_csv(snakemake.input.costs_csv,index_col=list(range(3)),
                           header=list(range(4)))
 
 
@@ -253,7 +293,7 @@ def plot_balances():
         #remove trailing link ports
         df.index = [i[:-1] if ((i != "co2") and (i[-1:] in ["0","1","2","3"])) else i for i in df.index]
 
-        df = df.groupby(df.index.map(rename_techs)).sum()
+        # df = df.groupby(df.index.map(rename_techs)).sum()
 
         to_drop = df.index[df.abs().max(axis=1) < snakemake.config['plotting']['energy_threshold']/10]
 
@@ -296,9 +336,8 @@ def plot_balances():
         ax.legend(handles,labels,ncol=4,loc="upper left")
 
 
-        fig.tight_layout()
-
-        fig.savefig(snakemake.output.balances[:-10] + k + ".pdf",transparent=True)
+        fig.savefig(snakemake.output.balances[:-10] + k + ".pdf",transparent=True,
+                    bbox_inches="tight")
 
 
 def historical_emissions(cts):
@@ -443,6 +482,95 @@ def plot_carbon_budget_distribution():
 
     plt.savefig(snakemake.output.co2_emissions, bbox_inches="tight")
 
+
+def plot_capital_costs_learning():
+    cost_learning = pd.read_csv(snakemake.input.capital_costs_learning,
+                                index_col=0, header=list(range(n_header)))
+    years = cost_learning.columns.levels[3]
+    costs = prepare_costs_all_years(years)
+    # convert EUR/MW in EUR/kW
+    costs_dea = pd.concat([costs[year].loc[cost_learning.index, "fixed"].rename(year)
+                           for year in years], axis=1)/1e3
+
+    cost_learning = cost_learning.droplevel(level=[0,1], axis=1)/1e3
+
+    fig, ax = plt.subplots(len(cost_learning.stack().columns), 1,  sharex=True)
+    fig.set_size_inches((10,10))
+    for i, scenario in enumerate(cost_learning.stack().columns):
+        print(i)
+
+        cost_learning[scenario].T.plot(kind="bar",ax=ax[i],
+                                        title=str(scenario), legend=False,
+                            color=[snakemake.config['plotting']['tech_colors'][i] for i in cost_learning.index])
+
+        costs_dea.T.plot(ax=ax[i], legend=False, ls="--",
+                  color=[snakemake.config['plotting']['tech_colors'][i] for i in cost_learning.index])
+
+
+
+        ax[i].set_xlabel("")
+
+        ax[i].set_ylim([0,cost_learning.sum().max()*1.1])
+
+        ax[i].grid(axis="y")
+
+    ax[1].set_ylabel("Investment costs [EUR/kW]")
+
+
+
+    handles,labels = ax[0].get_legend_handles_labels()
+
+    handles.reverse()
+    labels.reverse()
+
+    ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
+
+
+    fig.savefig(snakemake.output.capital_costs_learning,
+                 bbox_inches="tight")
+
+
+def plot_capacities():
+    capacities = pd.read_csv(snakemake.input.capacities,
+                                index_col=[0,1], header=list(range(n_header)))
+
+    capacities = capacities.droplevel(level=[0,1], axis=1) / 1e3
+
+    fig, ax = plt.subplots(len(capacities.stack().columns), 1,  sharex=True)
+    fig.set_size_inches((10,10))
+
+    for i, scenario in enumerate(capacities.stack().columns):
+
+        capacities.loc["generators", scenario].T.plot(kind="bar",ax=ax[i],
+                                        title=str(scenario), legend=False,
+                            color=[snakemake.config['plotting']['tech_colors'][i] for i in capacities.loc["generators"].index])
+
+
+
+
+        ax[i].set_xlabel("")
+
+        ax[i].set_ylim([0,capacities.loc["generators"].max().max()*1.1])
+
+        ax[i].grid(axis="y")
+
+    ax[1].set_ylabel("Installed capacities [GW]")
+
+
+
+    handles,labels = ax[0].get_legend_handles_labels()
+
+    handles.reverse()
+    labels.reverse()
+
+    ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
+
+    for i, scenario in enumerate(capacities.stack().columns):
+        ax[i].grid(axis="y")
+
+
+    fig.savefig(snakemake.output.capacities,
+                 bbox_inches="tight")
 #%%
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
@@ -464,5 +592,7 @@ if __name__ == "__main__":
 
     #plot_energy()
 
-    # plot_balances()
+    plot_balances()
+
+    plot_capital_costs_learning()
 

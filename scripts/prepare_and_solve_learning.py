@@ -20,8 +20,8 @@ from vresutils.costdata import annuity
 if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
-    # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
+    snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
+    # snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
 
 import pypsa_learning as pypsa
 from learning import add_learning
@@ -447,7 +447,7 @@ budget = snakemake.config["co2_budget"]["1p5"] * 1e9  # budget for + 1.5 Celsius
 # TODO currently only electricity sector, take about a third
 budget /= 3
 # TODO
-if countries==["DE"]:
+if all(countries==["DE"]):
     budget *= 0.19  # share of German population in Europe
 
 n.add("GlobalConstraint",

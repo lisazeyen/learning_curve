@@ -33,6 +33,7 @@ rule solve_network:
         network="results/" + "prenetworks/elec_s_{clusters}.nc",
         config="results/"+ config['run'] + '/configs/config.yaml',
         global_capacity="data/global_capacities.csv",
+        local_capacity="data/local_capacities.csv",
         costs="data/costs/",
         busmap_s="data/busmap_elec_s.csv",
         busmap="data/busmap_elec_s_{clusters}.csv",
@@ -119,9 +120,10 @@ rule make_summary2:
         costs="results"  + '/' + config['run'] + '/csvs/costs.csv',
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
         curtailment="results"  + '/' + config['run'] + '/csvs/curtailment.csv',
+        capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
         #energy="results"  + '/' + config['run'] + '/csvs/energy.csv',
         #supply="results"  + '/' + config['run'] + '/csvs/supply.csv',
-        #supply_energy="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
+        supply_energy="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
         prices="results"  + '/' + config['run'] + '/csvs/prices.csv',
         weighted_prices="results"  + '/' + config['run'] + '/csvs/weighted_prices.csv',
         #market_values="results"  + '/' + config['run'] + '/csvs/market_values.csv',
@@ -136,19 +138,24 @@ rule make_summary2:
 
 rule plot_summary:
     input:
-        costs="results"  + '/' + config['run'] + '/csvs/costs.csv',
+        costs_csv="results"  + '/' + config['run'] + '/csvs/costs.csv',
+        costs="data/costs/",
         # energy="results"  + '/' + config['run'] + '/csvs/energy.csv',
-        # balances="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
+        balances="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
         eea ="data/eea/UNFCCC_v23.csv",
         countries="results"  + '/' + config['run'] + '/csvs/nodal_capacities.csv',
         co2_emissions="results"  + '/' + config['run'] + '/csvs/co2_emissions.csv',
+        capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
+        capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
     output:
         costs1="results"  + '/' + config['run'] + '/graphs/costs.pdf',
         costs2="results"  + '/' + config['run'] + '/graphs/costs2.pdf',
         costs3="results"  + '/' + config['run'] + '/graphs/total_costs_per_year.pdf',
         # energy="results"  + '/' + config['run'] + '/graphs/energy.pdf',
-        # balances="results"  + '/' + config['run'] + '/graphs/balances-energy.pdf',
+        balances="results"  + '/' + config['run'] + '/graphs/balances-energy.pdf',
         co2_emissions="results"  + '/' + config['run'] + '/graphs/carbon_budget_plot.pdf',
+        capacities="results"  + '/' + config['run'] + '/graphs/capacities.pdf',
+        capital_costs_learning="results"  + '/' + config['run'] + '/graphs/capital_costs_learning.pdf',
     threads: 2
     resources: mem_mb=10000
     script:
@@ -156,7 +163,7 @@ rule plot_summary:
 
 rule copy_config:
     output:
-        config="results" + config['run'] + '/configs/config.yaml'
+        config="results/" + config['run'] + '/configs/config.yaml'
     threads: 1
     resources: mem_mb=1000
     script:

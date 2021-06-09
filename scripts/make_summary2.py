@@ -11,7 +11,8 @@ import pypsa_learning as pypsa
 
 from vresutils.costdata import annuity
 
-from pypsa_learning.descriptors import get_active_assets
+from pypsa_learning.descriptors import (get_extendable_i, expand_series,
+                                        nominal_attrs, get_active_assets)
 
 import yaml
 
@@ -68,6 +69,7 @@ def prepare_costs(cost_file, USD_to_EUR, discount_rate, Nyears, lifetime):
 def assign_carriers(n):
     if "carrier" not in n.lines:
         n.lines["carrier"] = "AC"
+    n.loads["carrier"] = n.loads.bus.apply(lambda x: n.buses.loc[x, "carrier"])
 
 
 def assign_locations(n):
@@ -266,13 +268,26 @@ def calculate_nodal_capacities(n,label,nodal_capacities):
 
 def calculate_capacities(n,label,capacities):
 
+
+    investments = n.snapshots.levels[0]
+    cols = pd.MultiIndex.from_product([capacities.columns.levels[0],
+                                       capacities.columns.levels[1],
+                                       capacities.columns.levels[2],
+                                       investments],
+                                      names=capacities.columns.names[:3] + ["year"])
+    capacities = capacities.reindex(cols, axis=1)
+
     for c in n.iterate_components(n.branch_components|n.controllable_one_port_components^{"Load"}):
-        capacities_grouped = c.df[opt_name.get(c.name,"p") + "_nom_opt"].groupby(c.df.carrier).sum()
+        active = pd.concat([get_active_assets(n,c.name,inv_p,n.snapshots).rename(inv_p)
+                  for inv_p in investments], axis=1).astype(int)
+        caps = c.df[opt_name.get(c.name,"p") + "_nom_opt"]
+        caps = active.mul(caps, axis=0)
+        capacities_grouped = caps.groupby(c.df.carrier).sum().drop("load", errors="ignore")
         capacities_grouped = pd.concat([capacities_grouped], keys=[c.list_name])
 
         capacities = capacities.reindex(capacities_grouped.index.union(capacities.index))
 
-        capacities.loc[capacities_grouped.index,label] = capacities_grouped
+        capacities.loc[capacities_grouped.index,label] = capacities_grouped.values
 
     return capacities
 
@@ -357,6 +372,13 @@ def calculate_supply(n,label,supply):
 def calculate_supply_energy(n,label,supply_energy):
     """calculate the total energy supply/consuption of each component at the buses aggregated by carrier"""
 
+    investments = n.snapshots.levels[0]
+    cols = pd.MultiIndex.from_product([supply_energy.columns.levels[0],
+                                       supply_energy.columns.levels[1],
+                                       supply_energy.columns.levels[2],
+                                       investments],
+                                      names=supply_energy.columns.names[:3] + ["year"])
+    supply_energy = supply_energy.reindex(cols, axis=1)
 
     bus_carriers = n.buses.carrier.unique()
 
@@ -371,12 +393,17 @@ def calculate_supply_energy(n,label,supply_energy):
             if len(items) == 0:
                 continue
 
-            s = c.pnl.p[items].multiply(n.snapshot_weightings,axis=0).sum().multiply(c.df.loc[items,'sign']).groupby(c.df.loc[items,'carrier']).sum()
+            if c.name=="Generator":
+                weightings = n.snapshot_weightings.generator_weightings
+            else:
+                weightings = n.snapshot_weightings.store_weightings
+
+            s = c.pnl.p[items].multiply(weightings,axis=0).groupby(level=0).sum().multiply(c.df.loc[items,'sign']).groupby(c.df.loc[items,'carrier'], axis=1).sum().T
             s = pd.concat([s], keys=[c.list_name])
             s = pd.concat([s], keys=[i])
 
-            supply_energy = supply_energy.reindex(s.index.union(supply_energy.index))
-            supply_energy.loc[s.index,label] = s
+            supply_energy = supply_energy.reindex(s.index.union(supply_energy.index, sort=False))
+            supply_energy.loc[s.index,label] = s.values
 
 
         for c in n.iterate_components(n.branch_components):
@@ -388,14 +415,17 @@ def calculate_supply_energy(n,label,supply_energy):
                 if len(items) == 0:
                     continue
 
-                s = (-1)*c.pnl["p"+end][items].multiply(n.snapshot_weightings,axis=0).sum().groupby(c.df.loc[items,'carrier']).sum()
+                s = ((-1)*c.pnl["p"+end][items]
+                     .multiply(n.snapshot_weightings.objective_weightings,axis=0)
+                     .groupby(level=0).sum()
+                     .groupby(c.df.loc[items,'carrier'], axis=1).sum()).T
                 s.index = s.index+end
                 s = pd.concat([s], keys=[c.list_name])
                 s = pd.concat([s], keys=[i])
 
-                supply_energy = supply_energy.reindex(s.index.union(supply_energy.index))
+                supply_energy = supply_energy.reindex(s.index.union(supply_energy.index, sort=False))
 
-                supply_energy.loc[s.index,label] = s
+                supply_energy.loc[s.index,label] = s.values
 
 
     return supply_energy
@@ -597,6 +627,36 @@ def calculate_co2_emissions(n, label, df):
 
     return df
 
+def calculate_capital_costs_learning(n, label, df):
+    # TODO
+
+    investments = n.snapshots.levels[0]
+    cols = pd.MultiIndex.from_product([df.columns.levels[0],
+                                       df.columns.levels[1],
+                                       df.columns.levels[2],
+                                       investments],
+                                      names=df.columns.names[:3] + ["year"])
+    df = df.reindex(cols, axis=1)
+
+    learn_i = n.carriers[n.carriers.learning_rate!=0].index
+
+    carrier_found = []
+    for c, attr in nominal_attrs.items():
+        ext_i = get_extendable_i(n, c)
+        if "carrier" not in n.df(c) or n.df(c).empty: continue
+        learn_assets = n.df(c)[n.df(c)["carrier"].isin(learn_i)].index
+        learn_assets = ext_i.intersection(n.df(c)[n.df(c)["carrier"].isin(learn_i)].index)
+        if learn_assets.empty: continue
+        capital_cost = (n.df(c).loc[learn_assets]
+                        .groupby([n.generators.carrier,n.generators.build_year])
+                        .mean().capital_cost.unstack())
+
+        df = df.reindex(capital_cost.index.union(df.index))
+
+        df.loc[capital_cost.index,label] = capital_cost.values
+
+
+    return df
 
 outputs = ["nodal_costs",
            "nodal_capacities",
@@ -607,13 +667,14 @@ outputs = ["nodal_costs",
            "curtailment",
            # "energy",
            #"supply",
-           #"supply_energy",
+           "supply_energy",
            "prices",
            "weighted_prices",
            # "price_statistics",
            # "market_values",
            "metrics",
-           "co2_emissions"
+           "co2_emissions",
+           "capital_costs_learning"
            ]
 
 def make_summaries(networks_dict):
