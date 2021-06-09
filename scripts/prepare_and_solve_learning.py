@@ -17,6 +17,12 @@ import logging
 from vresutils.benchmark import memory_logger
 from vresutils.costdata import annuity
 
+if 'snakemake' not in globals():
+    os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
+    from _helpers import mock_snakemake
+    # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
+    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
+
 import pypsa_learning as pypsa
 from learning import add_learning
 from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
@@ -25,12 +31,24 @@ from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_agg
 print(pypsa.__file__)
 
 
-if 'snakemake' not in globals():
-    os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
-    from _helpers import mock_snakemake
-    snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-
 logger = logging.getLogger(__name__)
+
+
+#First tell PyPSA that links can have multiple outputs by
+#overriding the component_attrs. This can be done for
+#as many buses as you need with format busi for i = 2,3,4,5,....
+#See https://pypsa.org/doc/components.html#link-with-multiple-outputs-or-inputs
+override_component_attrs = pypsa.descriptors.Dict({k : v.copy() for k,v in pypsa.components.component_attrs.items()})
+override_component_attrs["Link"].loc["bus2"] = ["string",np.nan,np.nan,"2nd bus","Input (optional)"]
+override_component_attrs["Link"].loc["bus3"] = ["string",np.nan,np.nan,"3rd bus","Input (optional)"]
+override_component_attrs["Link"].loc["bus4"] = ["string",np.nan,np.nan,"4th bus","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency2"] = ["static or series","per unit",1.,"2nd bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency3"] = ["static or series","per unit",1.,"3rd bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency4"] = ["static or series","per unit",1.,"4th bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["p2"] = ["series","MW",0.,"2nd bus output","Output"]
+override_component_attrs["Link"].loc["p3"] = ["series","MW",0.,"3rd bus output","Output"]
+override_component_attrs["Link"].loc["p4"] = ["series","MW",0.,"4th bus output","Output"]
+
 #%%
 def get_social_discount(t, r=0.01):
     return (1/(1+r)**t)
@@ -257,14 +275,25 @@ years = [2020, 2030, 2040, 2050]
 investment = pd.DatetimeIndex(['{}-01-01 00:00'.format(year) for year in years])
 r = 0.01 # social discountrate
 # Only consider a few snapshots to speed up the calculations
-n = pypsa.Network(snakemake.input.network)
+n = pypsa.Network(snakemake.input.network,
+                  override_component_attrs=override_component_attrs)
 
 # costs
 costs = prepare_costs_all_years(years)
-
+if not snakemake.config["costs"]["update_costs"]:
+    for year in years:
+        costs[year] = costs[years[0]]
+# considered countries
+countries = n.buses.country.unique()
+# drop old global constraints
 n.global_constraints.drop(n.global_constraints.index, inplace=True)
-global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
 
+# read in current installed capacities
+global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
+local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
+local_capacity = local_capacity[local_capacity.alpha_2.isin(countries)]
+
+# scenario options
 opts = snakemake.wildcards.sector_opts.split('-')
 
 for o in opts:
@@ -278,8 +307,9 @@ for o in opts:
             logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
             n.carriers.loc[tech, "learning_rate"] = learning_rate
             n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            n.carriers.loc[tech, "max_capacity"] = 4 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-
+            n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
+            factor = local_capacity.groupby(local_capacity.index).sum().loc[tech,"Electricity Installed Capacity (MW)" ] / global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
+            n.carriers.loc[tech, "global_factor"] = factor
     # temporal clustering
     m = re.match(r'^\d+h$', o, re.IGNORECASE)
     if m is not None:
@@ -321,7 +351,7 @@ n.set_snapshots(snapshots)
 sns=n.snapshots
 
 # set investment_weighting
-n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(1).values
+n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(10).values
 n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], r)
 
 
@@ -365,8 +395,8 @@ for year in years:
            efficiency=df.efficiency,
            p_max_pu=p_max_pu)
 
-if snakemake.config["costs"]["update_costs"]:
-    update_wind_solar_costs(n,costs, years)
+
+update_wind_solar_costs(n,costs, years)
 
 df = n.generators[n.generators.carrier=="OCGT"]
 # add OCGT
@@ -413,24 +443,27 @@ n.loads_t.p_set = n.loads_t.p_set.mul(weight, level=0, axis="index")
 
 
 # (a) add CO2 Budget constraint
+budget = snakemake.config["co2_budget"]["1p5"] * 1e9  # budget for + 1.5 Celsius for Europe
+# TODO currently only electricity sector, take about a third
+budget /= 3
+# TODO
+if countries==["DE"]:
+    budget *= 0.19  # share of German population in Europe
+
 n.add("GlobalConstraint",
       "CO2Budget",
       type="Budget",
-      carrier_attribute="co2_emissions", sense="<=",
-      constant=1e8)
+      carrier_attribute="co2_emissions",
+      sense="<=",
+      constant=budget)
 
 n.add("GlobalConstraint",
       "CO2neutral",
       type="primary_energy",
-      carrier_attribute="co2_emissions", sense="<=",
+      carrier_attribute="co2_emissions",
+      investment_period=sns.levels[0][-1],
+      sense="<=",
       constant=0)
-# add CO2 limit for last investment period
-# n.add("GlobalConstraint",
-#       "CO2Limit",
-#       carrier_attribute="co2_emissions", sense="<=",
-#       investment_period = sns.levels[0][-1],
-#       constant=1e2)
-
 
 
 
@@ -453,14 +486,20 @@ if snakemake.config["tech_limit"]:
               constant=max_cap)
 
 
-
-
 if any(n.carriers.learning_rate!=0):
     extra_functionality = add_learning
     skip_objective = True
 else:
     extra_functionality = None
     skip_objective = False
+
+# check for typcial periods
+if hasattr(n, "cluster"):
+    typical_period=True
+    # TODO
+    typical_period=False
+else:
+    typical_period=False
 
 config = snakemake.config['solving']
 solve_opts = config['options']
@@ -481,7 +520,7 @@ with memory_logger(filename=getattr(snakemake.log, 'memory', None), interval=30.
            multi_investment_periods=True, solver_options=solver_options,
            solver_logfile=solver_log, keep_files=True,
            extra_functionality=extra_functionality, keep_shadowprices=False,
-           typical_period=True)
+           typical_period=typical_period)
 
     n.export_to_netcdf(snakemake.output[0])
 
