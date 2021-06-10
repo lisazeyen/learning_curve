@@ -21,7 +21,7 @@ if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
     # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnH2xelectrolysisp0-learnonwindp10', clusters='37')
+    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnbatteryp0-learnonwindp10', clusters='37')
 
 import pypsa_learning as pypsa
 from learning import add_learning
@@ -204,6 +204,28 @@ def prepare_costs_all_years(years):
     return all_costs
 
 
+def update_other_costs(n,costs, years):
+    """
+    TODO marginal cost
+    update all costs according to technology data base
+    """
+    map_dict = {'H2 electrolysis':"electrolysis",
+                'H2 fuel cell': "fuel cell",
+                'battery charger':"battery inverter",
+                'battery discharger':"battery inverter",
+                "H2" : 'hydrogen storage underground',
+                "battery": "battery storage",
+                "offwind-ac": "offwind",
+                "offwind-dc":"offwind",
+
+        }
+    for c in n.iterate_components(n.one_port_components|n.branch_components):
+        df = c.df
+        if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
+        c.df["capital_cost"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "fixed"])
+        c.df["efficiency"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "efficiency"])
+        c.df["lifetime"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "lifetime"])
+
 def update_wind_solar_costs(n,costs, years):
     """
     Update costs for wind and solar generators added with pypsa-eur to those
@@ -285,6 +307,8 @@ if not snakemake.config["costs"]["update_costs"]:
 countries = n.buses.country.unique()
 # drop old global constraints
 n.global_constraints.drop(n.global_constraints.index, inplace=True)
+# update costs to DEA database all according to 2020
+update_other_costs(n,costs, years)
 
 # read in current installed capacities
 global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
