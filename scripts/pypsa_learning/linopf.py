@@ -1007,7 +1007,8 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
             if c == "Carrier" and attr =='cap_per_period':
                 inv_per_period_v = get_var(n, c, 'inv_per_period', pop=False)
                 inv_per_period = inv_per_period_v.applymap(lambda x: variables_sol.loc[x])
-                capital_cost = round(inv_per_period, ndigits=2)/round(values, ndigits=2)
+                capital_cost = (round(inv_per_period, ndigits=2)
+                                /round(values, ndigits=2)).fillna(method="ffill")
                 learn_i = capital_cost.columns
                 capital_cost.loc[sns[0][0]].fillna(n.carriers.loc[learn_i, "initial_cost"], inplace=True)
                 capital_cost.fillna(method="ffill", inplace=True)
