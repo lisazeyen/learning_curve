@@ -20,15 +20,13 @@ from vresutils.costdata import annuity
 if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
-    snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    # snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
+    # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
+    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnH2xelectrolysisp0-learnonwindp10', clusters='37')
 
 import pypsa_learning as pypsa
 from learning import add_learning
 from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
-
-
-print(pypsa.__file__)
+from pypsa_learning.descriptors import nominal_attrs, get_extendable_i
 
 
 logger = logging.getLogger(__name__)
@@ -300,15 +298,17 @@ for o in opts:
     # learning
     if "learn" in o:
         techs = list(snakemake.config["learning_rates"].keys())
-        if any([tech in o for tech in techs]):
-            tech = [tech for tech in techs if tech in o][0]
+        if any([tech in o.replace("x", " ") for tech in techs]):
+            tech = [tech for tech in techs if tech in o.replace("x", " ")][0]
             factor = float(o[len("learn"+tech):].replace("p",".").replace("m","-"))
             learning_rate = snakemake.config["learning_rates"][tech] + factor
             logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
             n.carriers.loc[tech, "learning_rate"] = learning_rate
             n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            factor = local_capacity.groupby(local_capacity.index).sum().loc[tech,"Electricity Installed Capacity (MW)" ] / global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
+            factor = local_capacity.groupby(local_capacity.index).sum().reindex(pd.Index([tech])).loc[tech,"Electricity Installed Capacity (MW)" ] / global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
+            # TODO if local capacity is missing assume share of 1/3
+            if np.isnan(factor): factor = 0.3
             n.carriers.loc[tech, "global_factor"] = factor
     # temporal clustering
     m = re.match(r'^\d+h$', o, re.IGNORECASE)
@@ -414,10 +414,61 @@ for year in years:
            efficiency=costs[year].loc["OCGT", "efficiency"]
            )
 
-for tech in n.carriers[n.carriers.learning_rate!=0].index:
-    n.carriers.loc[tech, "initial_cost"] = n.generators.loc[(n.generators.carrier==tech) & (n.generators.build_year==years[0]),
-                             'capital_cost'].mean()
+# h2 fuel cells and electrolysers
+h2 = ['H2 electrolysis', 'H2 fuel cell']
+h2_names = n.links[n.links.carrier.isin(h2)].index
+df = n.links.loc[h2_names]
+# drop old links
+n.links.drop(h2_names, inplace=True)
+# add new renewable generator for each investment period
+for year in years:
+    df.lifetime = costs[year].loc[df.carrier.replace({"H2 electrolysis":"electrolysis", "H2 fuel cell": "fuel cell"}).apply(lambda x: x.split("-")[0]), "lifetime"].values
+    n.madd("Link",
+           df.index,
+           suffix=" " + str(year),
+           bus0=df.bus0,
+           bus1=df.bus1,
+           carrier=df.carrier,
+           p_nom_extendable=True,
+           p_nom_max=df.p_nom_max,
+           build_year=year,
+           marginal_cost=df.marginal_cost,
+           lifetime=df.lifetime,
+           capital_cost=df.capital_cost,
+           efficiency=df.efficiency)
 
+# stores
+stores_carrier = ['H2', 'battery']
+names = n.stores[n.stores.carrier.isin(stores_carrier)].index
+df = n.stores.loc[names]
+# drop old links
+n.stores.drop(names, inplace=True)
+# add new renewable generator for each investment period
+for year in years:
+    df.lifetime = costs[year].loc[df.carrier.replace({"battery":"battery storage", "H2": "hydrogen storage underground"}).apply(lambda x: x.split("-")[0]), "lifetime"].values
+    n.madd("Store",
+           df.index,
+           suffix=" " + str(year),
+           bus=df.bus,
+           carrier=df.carrier,
+           e_nom_extendable=True,
+           standing_loss=df.standing_loss,
+           build_year=year,
+           marginal_cost=df.marginal_cost,
+           lifetime=df.lifetime,
+           capital_cost=df.capital_cost,
+           )
+
+learn_i = n.carriers[n.carriers.learning_rate!=0].index
+for tech in learn_i:
+    for c in nominal_attrs.keys():
+        ext_i = get_extendable_i(n, c)
+        if "carrier" not in n.df(c) or n.df(c).empty: continue
+        learn_assets = n.df(c)[n.df(c)["carrier"]==tech].index
+        learn_assets = ext_i.intersection(n.df(c)[n.df(c)["carrier"]==tech].index)
+        if learn_assets.empty: continue
+        index = n.df(c).loc[learn_assets][n.df(c).loc[learn_assets, "build_year"]<=years[0]].index
+        n.carriers.loc[tech, "initial_cost"] = n.df(c).loc[index, "capital_cost"].mean()
 
 
 
@@ -518,7 +569,7 @@ with memory_logger(filename=getattr(snakemake.log, 'memory', None), interval=30.
     #%%
     n.lopf(pyomo=False, solver_name="gurobi", skip_objective=skip_objective,
            multi_investment_periods=True, solver_options=solver_options,
-           solver_logfile=solver_log, keep_files=True,
+           solver_logfile=solver_log,
            extra_functionality=extra_functionality, keep_shadowprices=False,
            typical_period=typical_period)
 
