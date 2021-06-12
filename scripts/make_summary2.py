@@ -628,8 +628,6 @@ def calculate_co2_emissions(n, label, df):
     return df
 
 def calculate_capital_costs_learning(n, label, df):
-    # TODO
-
     investments = n.snapshots.levels[0]
     cols = pd.MultiIndex.from_product([df.columns.levels[0],
                                        df.columns.levels[1],
@@ -640,7 +638,6 @@ def calculate_capital_costs_learning(n, label, df):
 
     learn_i = n.carriers[n.carriers.learning_rate!=0].index
 
-    carrier_found = []
     for c, attr in nominal_attrs.items():
         ext_i = get_extendable_i(n, c)
         if "carrier" not in n.df(c) or n.df(c).empty: continue
@@ -658,6 +655,55 @@ def calculate_capital_costs_learning(n, label, df):
 
     return df
 
+def calculate_cumulative_capacities(n, label, cum_cap):
+    # TODO
+
+    investments = n.snapshots.levels[0]
+    cols = pd.MultiIndex.from_product([cum_cap.columns.levels[0],
+                                       cum_cap.columns.levels[1],
+                                       cum_cap.columns.levels[2],
+                                       investments],
+                                      names=cum_cap.columns.names[:3] + ["year"])
+    cum_cap = cum_cap.reindex(cols, axis=1)
+
+    learn_i = n.carriers[n.carriers.learning_rate!=0].index
+
+    for c, attr in nominal_attrs.items():
+        if "carrier" not in n.df(c) or n.df(c).empty: continue
+        caps = (n.df(c)[n.df(c).carrier.isin(learn_i)]
+                .groupby([n.df(c).carrier, n.df(c).build_year])
+                [opt_name.get(c,"p") + "_nom_opt"].sum().cumsum().unstack())
+
+        if caps.empty:continue
+
+        cum_cap = cum_cap.reindex(caps.index.union(cum_cap.index))
+
+        cum_cap.loc[caps.index,label] = caps.values
+
+
+    return cum_cap
+
+def calculate_learn_carriers(n, label, carrier):
+    # TODO
+
+
+    learn_i = n.carriers[n.carriers.learning_rate!=0].index
+    cols = ['learning_rate', 'global_capacity', 'initial_cost',
+            'max_capacity', 'global_factor']
+
+    cols_multi = pd.MultiIndex.from_product([carrier.columns.levels[0],
+                                       carrier.columns.levels[1],
+                                       carrier.columns.levels[2],
+                                       cols],
+                                      names=carrier.columns.names[:3] + ["attribute"])
+    carrier = carrier.reindex(cols_multi, axis=1)
+
+    carrier = carrier.reindex(carrier.index.union(learn_i))
+    carrier.loc[learn_i, label] = n.carriers.loc[learn_i, cols].values
+
+    return carrier
+
+
 outputs = ["nodal_costs",
            "nodal_capacities",
            "nodal_cfs",
@@ -674,7 +720,9 @@ outputs = ["nodal_costs",
            # "market_values",
            "metrics",
            "co2_emissions",
-           "capital_costs_learning"
+           "capital_costs_learning",
+           "cumulative_capacities",
+           "learn_carriers"
            ]
 
 def make_summaries(networks_dict):

@@ -130,6 +130,8 @@ rule make_summary2:
         #price_statistics="results"  + '/' + config['run'] + '/csvs/price_statistics.csv',
         metrics="results"  + '/' + config['run'] + '/csvs/metrics.csv',
         co2_emissions="results"  + '/' + config['run'] + '/csvs/co2_emissions.csv',
+        cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
+        learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
     threads: 2
     resources: mem_mb=10000
     script:
@@ -147,6 +149,8 @@ rule plot_summary:
         co2_emissions="results"  + '/' + config['run'] + '/csvs/co2_emissions.csv',
         capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
+        cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
+        learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
     output:
         costs1="results"  + '/' + config['run'] + '/graphs/costs.pdf',
         costs2="results"  + '/' + config['run'] + '/graphs/costs2.pdf',
@@ -156,6 +160,7 @@ rule plot_summary:
         co2_emissions="results"  + '/' + config['run'] + '/graphs/carbon_budget_plot.pdf',
         capacities="results"  + '/' + config['run'] + '/graphs/capacities.pdf',
         capital_costs_learning="results"  + '/' + config['run'] + '/graphs/capital_costs_learning.pdf',
+        learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/',
     threads: 2
     resources: mem_mb=10000
     script:

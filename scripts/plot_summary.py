@@ -1,8 +1,9 @@
 
-
 import numpy as np
 import pandas as pd
 from vresutils.costdata import annuity
+from learning import (experience_curve, cumulative_cost_curve,
+                      piecewise_linear, get_slope)
 
 
 #allow plotting without Xwindows
@@ -25,6 +26,16 @@ plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+# pypsa names to technology data
+pypsa_to_database = {'H2 electrolysis':"electrolysis",
+                    'H2 fuel cell': "fuel cell",
+                    'battery charger':"battery inverter",
+                    'battery discharger':"battery inverter",
+                    "H2" : 'hydrogen storage underground',
+                    "battery": "battery storage",
+                    "offwind-ac": "offwind",
+                    "offwind-dc":"offwind"}
 
 #%%
 def prepare_costs(cost_file, discount_rate, lifetime):
@@ -489,15 +500,18 @@ def plot_capital_costs_learning():
     years = cost_learning.columns.levels[3]
     costs = prepare_costs_all_years(years)
     # convert EUR/MW in EUR/kW
-    costs_dea = pd.concat([costs[year].loc[cost_learning.index, "fixed"].rename(year)
+    costs_dea = pd.concat([costs[year]
+                           .loc[cost_learning.rename(index=pypsa_to_database).index, "fixed"].rename(year)
                            for year in years], axis=1)/1e3
+    costs_dea.rename(index=lambda x: "DEA " + x, inplace=True)
 
     cost_learning = cost_learning.droplevel(level=[0,1], axis=1)/1e3
 
-    fig, ax = plt.subplots(len(cost_learning.stack().columns), 1,  sharex=True)
+
+    fig, ax = plt.subplots(len(cost_learning.stack().columns), 1,
+                           sharex=True)
     fig.set_size_inches((10,10))
     for i, scenario in enumerate(cost_learning.stack().columns):
-        print(i)
 
         cost_learning[scenario].T.plot(kind="bar",ax=ax[i],
                                         title=str(scenario), legend=False,
@@ -516,8 +530,6 @@ def plot_capital_costs_learning():
 
     ax[1].set_ylabel("Investment costs [EUR/kW]")
 
-
-
     handles,labels = ax[0].get_legend_handles_labels()
 
     handles.reverse()
@@ -529,6 +541,79 @@ def plot_capital_costs_learning():
     fig.savefig(snakemake.output.capital_costs_learning,
                  bbox_inches="tight")
 
+def learning_cost_vs_curve():
+    # capital cost for learning technologies
+    cost_learning = pd.read_csv(snakemake.input.capital_costs_learning,
+                                index_col=0, header=list(range(n_header)))
+    cost_learning = cost_learning.stack().unstack(0).dropna(how="all", axis=1)
+    # learning technologies
+    learn_i = cost_learning.index
+    # installed capacities
+    cum_cap = pd.read_csv(snakemake.input.cumulative_capacities,
+                                index_col=0, header=list(range(n_header)))
+    cum_cap = cum_cap.stack().unstack(0).dropna(how="all", axis=1)
+    # learning carriers
+    learn_carrier = pd.read_csv(snakemake.input.learn_carriers,
+                                index_col=0, header=list(range(n_header)))
+
+    learn_carrier = learn_carrier.stack().unstack(0).dropna(how="all", axis=1)
+
+    for scenario in learn_carrier.columns:
+        initial_capacity = learn_carrier.loc["global_capacity", scenario]
+        global_factor = learn_carrier.loc["global_factor", scenario]
+        global_cum = cum_cap[scenario] / global_factor
+        global_cost = cost_learning[scenario]
+        tot = pd.concat([global_cum, global_cost], axis=1)
+        tot.columns = ["cap", "cost"]
+        max_capacity = learn_carrier.loc["max_capacity", scenario]
+        learning_rate = learn_carrier.loc["learning_rate", scenario]
+        c0 = learn_carrier.loc["initial_cost", scenario]
+        caps = pd.DataFrame(np.arange(initial_capacity, max_capacity,
+                                      (max_capacity-initial_capacity)//1000),
+                            columns=["cumualtive capacity"])
+        caps.index = caps["cumualtive capacity"]
+        y_cum = caps.apply(lambda x: cumulative_cost_curve(x, learning_rate, c0, initial_capacity))
+        y_cum.columns = ["cumulative investment costs"]
+        y = caps.apply(lambda x: experience_curve(x, learning_rate, c0, initial_capacity))
+        # get interpolation points
+        points= piecewise_linear(y_cum.iloc[:,0], 5, learning_rate, c0, initial_capacity, scenario[-1])
+
+        tot["cost"] =  tot.cost.apply(lambda x: x/1e3)
+        y.columns = ["learning curve"]
+        y_cum.columns =  ["cumulative cost curve"]
+
+        fig, ax = plt.subplots()
+        plt.title(scenario)
+
+        plt.step(points.xs("x_fit", level=1, axis=1).shift(-1).dropna(),
+                 get_slope(points)/1e3,
+                 lw=2, ls=":", color="green")
+
+        # plt.vlines(limit, ymin=y.min()/1e3,ymax=y.max()/1e3,
+        #            linestyle="--", color="grey")
+
+        (y/1e3).plot(ax=ax, lw=2, legend=False, color='#1f77b4')
+
+        tot.plot(kind="scatter", x= "cap", y="cost", ax=ax,
+                 marker="o",  s=80, color="red")
+
+        ax.set_ylabel("specific annualised investment cost \n [Eur/kW]")
+        ax.set_xlabel("installed global capacity \n [MW]")
+
+        ax2=ax.twinx()
+        (y_cum/1e9).plot(ax=ax2,  lw=2, color='#1f77b4')
+        ax2.set_ylabel("total cumulative cost \n [billion Eur]")
+
+        for lr in points.columns.levels[0]:
+            lin = points[lr].set_index("x_fit").rename(columns={"y_fit":"piece-wise linearisation"})
+            (lin/1e9).plot(marker="*", ls="--", ax=ax2, grid=True, lw=2,
+                           markersize=10, color="green")
+
+        plt.legend(bbox_to_anchor=(1.2,1))
+
+        fig.savefig(snakemake.output.learning_cost_vs_curve + "/{}.pdf".format(scenario),
+                 bbox_inches="tight")
+        #%%
 
 def plot_capacities():
     capacities = pd.read_csv(snakemake.input.capacities,
