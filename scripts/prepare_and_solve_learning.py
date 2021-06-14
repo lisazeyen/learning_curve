@@ -21,7 +21,7 @@ if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
     # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnbatteryp0-learnonwindp10', clusters='37')
+    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnH2 electrolysisp0-learnonwindp0', clusters='37')
 
 import pypsa_learning as pypsa
 from learning import add_learning
@@ -326,13 +326,20 @@ for o in opts:
             tech = [tech for tech in techs if tech in o.replace("x", " ")][0]
             factor = float(o[len("learn"+tech):].replace("p",".").replace("m","-"))
             learning_rate = snakemake.config["learning_rates"][tech] + factor
-            logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
-            n.carriers.loc[tech, "learning_rate"] = learning_rate
-            n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             factor = local_capacity.groupby(local_capacity.index).sum().reindex(pd.Index([tech])).loc[tech,"Electricity Installed Capacity (MW)" ] / global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             # TODO if local capacity is missing assume share of 1/3
             if np.isnan(factor): factor = 0.3
+            logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
+            if tech not in n.carriers.index:
+                n.add("Carrier",
+                      name=tech,
+                      learning_rate=learning_rate,
+                      global_capacity=global_capacity.loc[tech, 'Electricity Installed Capacity (MW)'],
+                      max_capacity=12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)'],
+                      global_factor=factor)
+            n.carriers.loc[tech, "learning_rate"] = learning_rate
+            n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
+            n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             n.carriers.loc[tech, "global_factor"] = factor
     # temporal clustering
     m = re.match(r'^\d+h$', o, re.IGNORECASE)
