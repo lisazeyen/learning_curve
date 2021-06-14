@@ -21,7 +21,7 @@ if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
     # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts='Co2L-2p24h-learnH2 electrolysisp0-learnonwindp0', clusters='37')
+    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts= 'Co2L-2p24h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0', clusters='37')
 
 import pypsa_learning as pypsa
 from learning import add_learning
@@ -341,6 +341,10 @@ for o in opts:
             n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
             n.carriers.loc[tech, "global_factor"] = factor
+            # TODO
+            if tech=="H2 electrolysis":
+                n.carriers.loc["H2 electrolysis", "max_capacity"] *= 4
+
     # temporal clustering
     m = re.match(r'^\d+h$', o, re.IGNORECASE)
     if m is not None:
@@ -590,7 +594,7 @@ solver_log = snakemake.log.solver
 solver_options["threads"] = snakemake.threads
 
 # MIPFocus = 3, MIPGap, MIRCuts=2 (agressive)
-
+#%%
 logging.basicConfig(filename=snakemake.log.python,
                     level=snakemake.config['logging']['level'])
 
