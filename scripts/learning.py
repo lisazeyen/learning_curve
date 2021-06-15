@@ -221,7 +221,7 @@ def get_cumulative_cap_from_cum_cost(cumulative_cost, learning_rate, c0, e0):
     ---------
         cumulative capacity
     """
-    if cumulative_cost==0:
+    if cumulative_cost == 0:
         return e0
     # calculate learning index alpha
     alpha = math.log2(1 / (1-learning_rate))
@@ -610,7 +610,7 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points,
         active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
                           for inv_p in investments], axis=1).astype(int).loc[learn_assets]
         # new build assets in investment period
-        new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1)
+        new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(-1,0)
 
         # nominal capacity for each asset
         caps = expand_series(get_var(n, c, attr).loc[learn_assets], investments)
