@@ -46,6 +46,39 @@ lookup = pd.read_csv(os.path.join(os.path.dirname(__file__), 'variables.csv'),
                      index_col=['component', 'variable'])
 
 #%%
+def define_growth_limit(n, snapshots, c, attr):
+    """Constraint new installed capacity per investment period.
+
+    Parameters
+    ----------
+    n    : pypsa.Network
+    c    : str
+           network component of which the nominal capacity should be defined
+    attr : str
+           name of the variable, e.g. 'p_nom'
+    """
+    investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.]
+
+
+    ext_i = get_extendable_i(n, c)
+    if "carrier" not in n.df(c) or n.df(c).empty: return
+    limit_i = n.df(c)[n.df(c).isin(n.carriers.index)].loc[ext_i].index
+    if limit_i.empty: return
+    # active assets
+    active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
+                      for inv_p in investments], axis=1).astype(int).loc[limit_i]
+    # new build assets in investment period
+    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(-1,0)
+
+    caps = expand_series(get_var(n, c, attr).loc[limit_i], investments)
+
+    lhs = linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum().T
+    rhs = (expand_series(n.carriers["max_growth"].reindex(lhs.columns).fillna(np.inf), investments)
+           .mul(n.investment_period_weightings.time_weightings, axis=1).T)
+
+    define_constraints(n, lhs, '<=', rhs, 'Carrier', 'growth_limit_{}'.format(c))
+
+
 def define_nominal_for_extendable_variables(n, c, attr):
     """
     Initializes variables for nominal capacities for a given component and a
@@ -905,6 +938,8 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
 
     for c, attr in lookup.query('nominal and not handle_separately').index:
         define_nominal_for_extendable_variables(n, c, attr)
+        # define constraint for newly installed capacity per investment period
+        define_growth_limit(n, snapshots, c, attr)
     for c, attr in lookup.query('not nominal and not handle_separately').index:
         define_dispatch_for_non_extendable_variables(n, snapshots, c, attr)
         define_dispatch_for_extendable_and_committable_variables(n, snapshots, c, attr)
