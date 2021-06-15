@@ -216,15 +216,15 @@ def update_other_costs(n,costs, years):
                 "H2" : 'hydrogen storage underground',
                 "battery": "battery storage",
                 "offwind-ac": "offwind",
-                "offwind-dc":"offwind",
+                "offwind-dc":"offwind"}
 
-        }
     for c in n.iterate_components(n.one_port_components|n.branch_components):
         df = c.df
         if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
-        c.df["capital_cost"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "fixed"])
-        c.df["efficiency"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "efficiency"])
-        c.df["lifetime"] = c.df.carrier.replace(map_dict).apply(lambda x: costs[years[0]].loc[x, "lifetime"])
+        c.df["capital_cost"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["fixed"]).fillna(c.df.capital_cost)
+        if "efficiency" in c.df.columns:
+            c.df["efficiency"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["efficiency"]).fillna(c.df.efficiency)
+        c.df["lifetime"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["lifetime"]).fillna(c.df.lifetime)
 
 def update_wind_solar_costs(n,costs, years):
     """
@@ -283,9 +283,6 @@ def update_wind_solar_costs(n,costs, years):
                 capital_cost = (costs[year].at['offwind', 'fixed'] +
                                 costs[year].at[tech + '-station', 'fixed'] +
                                 connection_cost)
-
-                logger.info("Added connection cost of {:0.0f}-{:0.0f} Eur/MW/a to {}"
-                            .format(connection_cost[0].min(), connection_cost[0].max(), tech))
 
                 n.generators.loc[(n.generators.carrier==tech)  & (n.generators.build_year==year),
                                  'capital_cost'] = capital_cost.rename(index=lambda node: node + ' ' + tech + " " +str(year))
@@ -392,13 +389,26 @@ n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_w
 
 # ### Play around with assumptions:
 
+# adjust already installed capacity according to IRENA
+n.generators["country"] = n.generators.index.str[:2]
+local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
+p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
+        .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
+# TODO IRENA data is per country assign capacity to first bus
+first_bus = (n.buses.reset_index()).groupby(n.buses.reset_index().country).first().name
+
+gen_i = p_nom[~p_nom.isna() & n.generators.bus.isin(first_bus)].index
+not_first = p_nom[~p_nom.isna()].index.difference(gen_i)
+n.generators.loc[not_first, "p_nom"] = 0
+n.generators.loc[gen_i, "p_nom"] = p_nom.loc[gen_i]
 
 # 1) conventional phase out
 # conventional lifetime + build year
-conventionals = ["lignite", "coal", "oil", "nuclear", "CCGT","OCGT"]
+conventionals = ["lignite", "coal", "oil", "nuclear", "CCGT"]
 gens = n.generators[n.generators.carrier.isin(conventionals)].index
 n.generators.loc[gens, "build_year"] = 2013
 n.generators.loc[gens, "lifetime"] = 20
+
 
 
 # 2.) renewable generator assumptions (e.g. can be newly build in each investment
@@ -407,12 +417,10 @@ n.generators.loc[gens, "lifetime"] = 20
 # renewable
 renewables = ["solar", "onwind", "offwind-ac", "offwind-dc"]
 gen_names = n.generators[n.generators.carrier.isin(renewables)].index
+n.generators.loc[gen_names, "p_nom_extendable"] = False
+n.generators.loc[gen_names, "build_year"] = 2010
 df = n.generators.loc[gen_names]
 p_max_pu = n.generators_t.p_max_pu[gen_names]
-
-# drop old renewable generators
-n.generators.drop(gen_names, inplace=True)
-n.generators_t.p_max_pu.drop(gen_names, axis=1, inplace=True)
 # add new renewable generator for each investment period
 for year in years:
     df.lifetime = costs[year].loc[df.carrier.apply(lambda x: x.split("-")[0]), "lifetime"].values
@@ -421,6 +429,7 @@ for year in years:
            suffix=" " + str(year),
            bus=df.bus,
            carrier=df.carrier,
+           p_nom = df.p_nom if year==years[0] else 0.,
            p_nom_extendable=True,
            p_nom_max=df.p_nom_max,
            build_year=year,
@@ -433,7 +442,10 @@ for year in years:
 
 update_wind_solar_costs(n,costs, years)
 
+# ----- make OCGT extendable every investment period
 df = n.generators[n.generators.carrier=="OCGT"]
+# drop old OCGT
+n.generators = n.generators[n.generators.carrier!="OCGT"]
 # add OCGT
 for year in years:
     n.madd("Generator",
@@ -442,6 +454,7 @@ for year in years:
            bus=df.bus,
            carrier=df.carrier,
            p_nom_extendable=True,
+           p_nom = df.p_nom if year==years[0] else 0.,
            build_year=year,
            marginal_cost=df.marginal_cost,
            lifetime=costs[year].loc["OCGT", "lifetime"],
@@ -531,7 +544,7 @@ n.loads_t.p_set = n.loads_t.p_set.mul(weight, level=0, axis="index")
 # (a) add CO2 Budget constraint
 budget = snakemake.config["co2_budget"]["1p5"] * 1e9  # budget for + 1.5 Celsius for Europe
 # TODO currently only electricity sector, take about a third
-budget /= 3
+budget /= 10
 # TODO
 if all(countries==["DE"]):
     budget *= 0.19  # share of German population in Europe
@@ -571,6 +584,9 @@ if snakemake.config["tech_limit"]:
               bus=nodes,
               constant=max_cap)
 
+# limit max growth per year
+n.carriers.loc[:, "max_growth"] = 20e3
+n.carriers.loc["H2", "max_growth"] = np.inf
 
 if any(n.carriers.learning_rate!=0):
     extra_functionality = add_learning
@@ -594,7 +610,7 @@ solver_log = snakemake.log.solver
 solver_options["threads"] = snakemake.threads
 
 # MIPFocus = 3, MIPGap, MIRCuts=2 (agressive)
-#%%
+
 logging.basicConfig(filename=snakemake.log.python,
                     level=snakemake.config['logging']['level'])
 
