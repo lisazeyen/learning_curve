@@ -61,6 +61,8 @@ a = capacities['Electricity Installed Capacity (MW)'].str.replace(",","", regex=
 a = pd.to_numeric(a, errors="coerce")
 capacities['Electricity Installed Capacity (MW)'] = a
 
+# take data from 2020
+capacities = capacities[capacities.Year == 2020]
 # ----------------------------------------------------------------------------
 # LOCAL CAPCAITIES ###########################################################
 index = pd.Index(irena_map.values()).unique()
