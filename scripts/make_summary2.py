@@ -645,7 +645,7 @@ def calculate_capital_costs_learning(n, label, df):
         learn_assets = ext_i.intersection(n.df(c)[n.df(c)["carrier"].isin(learn_i)].index)
         if learn_assets.empty: continue
         capital_cost = (n.df(c).loc[learn_assets]
-                        .groupby([n.generators.carrier,n.generators.build_year])
+                        .groupby([n.df(c).carrier,n.df(c).build_year])
                         .mean().capital_cost.unstack())
 
         df = df.reindex(capital_cost.index.union(df.index))
@@ -672,7 +672,7 @@ def calculate_cumulative_capacities(n, label, cum_cap):
         if "carrier" not in n.df(c) or n.df(c).empty: continue
         caps = (n.df(c)[n.df(c).carrier.isin(learn_i)]
                 .groupby([n.df(c).carrier, n.df(c).build_year])
-                [opt_name.get(c,"p") + "_nom_opt"].sum().cumsum().unstack())
+                [opt_name.get(c,"p") + "_nom_opt"].sum().unstack().cumsum(axis=1))
 
         if caps.empty:continue
 
