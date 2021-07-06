@@ -415,7 +415,7 @@ def calculate_supply_energy(n,label,supply_energy):
                 if len(items) == 0:
                     continue
 
-                s = ((-1)*c.pnl["p"+end][items]
+                s = ((-1)*c.pnl["p"+end].reindex(items, axis=1)
                      .multiply(n.snapshot_weightings.objective_weightings,axis=0)
                      .groupby(level=0).sum()
                      .groupby(c.df.loc[items,'carrier'], axis=1).sum()).T
@@ -492,7 +492,7 @@ def calculate_weighted_prices(n,label,weighted_prices):
         elif carrier[:5] == "space":
             load = heat_demand_df[buses.str[:2]].rename(columns=lambda i: str(i)+suffix)
         else:
-            load = n.loads_t.p_set[buses]
+            load = n.loads_t.p_set.reindex(buses, axis=1)
 
 
         for tech in link_loads[carrier]:
@@ -593,12 +593,12 @@ def calculate_price_statistics(n, label, price_statistics):
 def calculate_co2_emissions(n, label, df):
 
     investments = n.snapshots.levels[0]
-    cols = pd.MultiIndex.from_product([df.columns.levels[0],
-                                       df.columns.levels[1],
-                                       df.columns.levels[2],
-                                       investments],
-                                      names=df.columns.names[:3] + ["year"])
-    df = df.reindex(cols, axis=1)
+    # cols = pd.MultiIndex.from_product([df.columns.levels[0],
+    #                                    df.columns.levels[1],
+    #                                    df.columns.levels[2],
+    #                                    investments],
+    #                                   names=df.columns.names[:3] + ["year"])
+    # df = df.reindex(cols, axis=1)
 
     carattr = "co2_emissions"
     emissions = n.carriers.query(f'{carattr} != 0')[carattr]
@@ -624,6 +624,10 @@ def calculate_co2_emissions(n, label, df):
         df = df.reindex(emitted_grouped.index.union(df.index))
 
         df.loc[emitted_grouped.index,label] = emitted_grouped.values
+
+    if any(n.stores.carrier=="co2"):
+        df[label] = n.stores_t.e.groupby(level=0).last()["co2 2020"]
+
 
     return df
 
@@ -672,10 +676,11 @@ def calculate_cumulative_capacities(n, label, cum_cap):
         if "carrier" not in n.df(c) or n.df(c).empty: continue
         caps = (n.df(c)[n.df(c).carrier.isin(learn_i)]
                 .groupby([n.df(c).carrier, n.df(c).build_year])
-                [opt_name.get(c,"p") + "_nom_opt"].sum().unstack().cumsum(axis=1))
+                [opt_name.get(c,"p") + "_nom_opt"].sum())
 
         if caps.empty:continue
 
+        caps = round(caps.unstack()[investments].cumsum(axis=1))
         cum_cap = cum_cap.reindex(caps.index.union(cum_cap.index))
 
         cum_cap.loc[caps.index,label] = caps.values
@@ -715,7 +720,7 @@ outputs = ["nodal_costs",
            #"supply",
            "supply_energy",
            "prices",
-           "weighted_prices",
+           # "weighted_prices",
            # "price_statistics",
            # "market_values",
            "metrics",
@@ -761,19 +766,19 @@ if __name__ == "__main__":
         import os
         os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
         from _helpers import mock_snakemake
-        # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-        snakemake = mock_snakemake('make_summary2',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
+        snakemake = mock_snakemake('make_summary_sec',  sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10', clusters='37')
         os.chdir("/home/ws/bw0928/Dokumente/learning_curve/")
 
     networks_dict = {(clusters, lv, sector_opt) :
-                     "results/" + snakemake.config['run'] +"/postnetworks/DE_{sector_opts}_{clusters}.nc"\
+                     "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{sector_opts}.nc"\
+                     #"results/" + snakemake.config['run'] +"/postnetworks/elec_s_{clusters}_lv{lv}_{sector_opts}.nc"\
                      .format(
-                             clusters=clusters,
-                              lv=lv,
+                             # clusters=clusters,
+                              # lv=lv,
                              sector_opts=sector_opt)\
-                     for clusters in snakemake.config['scenario']['clusters'] \
+                      for clusters in snakemake.config['scenario']['clusters'] \
                      for sector_opt in snakemake.config['scenario']['sector_opts'] \
-                     for lv in snakemake.config['scenario']['lv'] \
+                      for lv in snakemake.config['scenario']['lv'] \
                          }
 
     print(networks_dict)

@@ -623,6 +623,8 @@ def _import_from_importer(network, importer, basename, skip_time=False):
 
         elif "index" in df.columns:
             df.set_index("index", inplace=True)
+        elif "name" in df.columns:
+            df.set_index("name", inplace=True)
 
         network.set_snapshots(df.index)
 
@@ -720,7 +722,6 @@ def import_components_from_dataframe(network, dataframe, cls_name):
     # Clean dataframe and ensure correct types
     dataframe = pd.DataFrame(dataframe)
     dataframe.index = dataframe.index.astype(str)
-
     for k in static_attrs.index:
         if k not in dataframe.columns:
             dataframe[k] = static_attrs.at[k, "default"]

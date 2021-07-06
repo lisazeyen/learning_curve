@@ -13,8 +13,6 @@ import math
 
 import pypsa_learning as pypsa
 
-print(pypsa.__file__)
-
 
 from pypsa_learning.pf import (get_switchable_as_dense as get_as_dense)
 from pypsa_learning.descriptors import (get_extendable_i, expand_series,
@@ -342,10 +340,8 @@ def get_slope(points):
 
 def get_interception(points, slope):
     """Get interception point with cumulative cost (y) axis."""
-    y_previous = points.xs("y_fit", axis=1, level=1).shift().dropna().reset_index(drop=True)
-    x_previous =  points.xs("x_fit", axis=1, level=1).shift().dropna().reset_index(drop=True)
-
-    return y_previous - (slope * x_previous)
+    return (points.xs("y_fit", axis=1, level=1) -
+            (slope*points.xs("x_fit", axis=1, level=1))).dropna()
 
 
 def define_bounds(points, col, bound_type, investments, segments):

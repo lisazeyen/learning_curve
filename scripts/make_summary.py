@@ -13,6 +13,7 @@ import pypsa_learning as pypsa
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from plot_summary import rename_techs
 to_rgba = mpl.colors.colorConverter.to_rgba
 
 import numpy as np
@@ -90,6 +91,7 @@ def get_co2_emissions(n):
 def plot_cap_per_investment_period(n, c):
     caps = get_cap_per_investment_period(n, c)
     caps = caps.groupby(n.df(c).carrier, axis=1).sum().drop("load", axis=1, errors="ignore")
+    caps = caps.groupby(caps.columns.map(rename_techs), axis=1).sum()
     if not caps.empty:
         (caps/1e6).plot(kind="bar", stacked=True, grid=True, title="installed capacities",
                         color=[snakemake.config['plotting']['tech_colors'][i] for i in caps.columns])
@@ -122,7 +124,7 @@ def plot_generation(n, c):
 def plot_co2_emissions(co2_emissions):
 
     grouped = co2_emissions.groupby(level=0).sum().groupby(n.generators.carrier, axis=1).sum()
-    grouped.plot(title="CO2 emissions", grid=True)
+    grouped.plot(title="CO2 emissions", grid=True, kind="area")
     plt.ylabel("CO2 emissions [Mt]")
     plt.xlabel("investment period")
 

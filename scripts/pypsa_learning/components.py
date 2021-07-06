@@ -805,7 +805,6 @@ class Network(Basic):
                 series[k] = pd.DataFrame(v, index=self.snapshots, columns=new_names)
             else:
                 static[k] = v
-
         self.import_components_from_dataframe(pd.DataFrame(static, index=new_names), class_name)
 
         for k, v in iteritems(series):

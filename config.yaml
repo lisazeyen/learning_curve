@@ -1,4 +1,4 @@
-run: "singlecountry_globalfactor_co2neutral_nocostupdate"
+run: "test"
 
 logging:
   level: INFO
@@ -7,8 +7,9 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-128p24h, Co2L-128p24h-learnonwindp0, Co2L-128p24h-learnsolarp0-learnonwindp0]
+  sector_opts: [Co2L-73h-co2seq3, Co2L-73h-learnonwindp0-co2seq3, Co2L-73h-learnonwindp0-learnH2xelectrolysisp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq10, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq5,Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq2, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp10-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp10-co2seq10]
 
+investment_periods: [2020, 2030, 2040, 2050]
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
@@ -21,11 +22,12 @@ learning_technologies:
 
 learning_rates:
   solar: 0.24   # DEA p.262 24%,
-  onwind: 0.2  # IRENA 2017, DEA for elec and heat p. 220 assume 10%
+  onwind: 0.10  # IRENA 2017 20%, DEA for elec and heat p. 220 assume 10%
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
-  H2 electrolysis: 0.21  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
-  H2 fuel cell: 0.21
+  H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
+  H2 Electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
+  H2 fuel cell: 0.16
   battery: 0.18  # DEA technology data for energy storage, p.178
   DAC: 0.10  # https://www.sciencedirect.com/science/article/pii/S0959652619307772
   battery inverter: 0.19 # JRC "Li-ion batteries for mobility and stationary storage applications" p.69
@@ -50,11 +52,30 @@ co2_budget:
   1p7 : 48  # Budget in Gt CO2 for 1.7 for Europe, global 800 Gt
   2p0 : 70 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
 
+sector:
+  'bev_dsm' : True #turns on EV battery
+  'bev_availability' : 0.5  #How many cars do smart charging
+  'v2g' : True #allows feed-in to grid from EV battery
+  #what is not EV or FCEV is oil-fuelled ICE
+  'land_transport_fuel_cell_share': # 1 means all FCEVs
+    2020: 0
+    2030: 0.05
+    2040: 0.1
+    2050: 0.15
+  'land_transport_electric_share': # 1 means all EVs
+    2020: 0
+    2030: 0.25
+    2040: 0.6
+    2050: 0.85
+  'transport_fuel_cell_efficiency': 0.5
+  'transport_internal_combustion_efficiency': 0.3
+
 costs:
   update_costs: False
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016
+  social_discountrate: 0.02
   USD2013_to_EUR2013: 0.7532 # [EUR/USD] ECB: https://www.ecb.europa.eu/stats/exchange/eurofxref/html/eurofxref-graph-usd.en.html
   marginal_cost:
     solar: 0.01
@@ -89,6 +110,8 @@ solving:
     FeasibilityTol: 1.e-5
     AggFill: 0
     PreDual: 0
+    # NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
+    MIPGap: 0.005    # 0.5% gap between (ObjBound-ObjVal)/ObjVal
     #Cuts: 2
     #ScaleFlag: 0
     # Heuristics: 0
@@ -123,8 +146,10 @@ plotting:
     'offwind-ac' : "#6895dd"
     'offshore wind' : "#6895dd"
     'offshore wind ac' : "#6895dd"
+    'offshore wind (AC)': "#6895dd"
     'offwind-dc' : "#74c6f2"
     'offshore wind dc' : "#74c6f2"
+    'offshore wind (DC)' : "#74c6f2"
     "hydro" : "#08ad97"
     "hydro+PHS" : "#08ad97"
     "PHS" : "#08ad97"
@@ -134,6 +159,7 @@ plotting:
     "run of river" : "#4adbc8"
     'solar' : "#f9d002"
     'solar PV' : "#f9d002"
+    'solar rooftop' : "#fbe780"
     'solar thermal' : '#ffef60'
     'biomass' : '#0c6013'
     'solid biomass' : '#06540d'
@@ -141,19 +167,25 @@ plotting:
     'waste' : '#68896b'
     'geothermal' : '#ba91b1'
     "OCGT" : "#d35050"
-    "gas" : "#d35050"
+    "gas" : "#d9480f"
     "natural gas" : "#d35050"
     "CCGT" : "#b20101"
     "nuclear" : "#ff9000"
+    "uranium" : "#f783ac"
     "coal" : "#707070"
     "lignite" : "#9e5a01"
     "oil" : "#262626"
     "H2" : "#ea048a"
     "H2 electrolysis" : "indigo"
     "H2 fuel cell" : "thistle"
+    "H2 Fuel Cell" : "thistle"
     "load" : "teal"
     "hydrogen storage" : "#ea048a"
     "battery" : "#b8ea04"
+    "Li ion" : "#EA04B8"
+    "BEV charger" : "#b8ea04"
+    "BEV discharger" : "#b8ea04"
+    "V2G" : "b"
     "Electric load" : "#f9d002"
     "electricity" : "#f9d002"
     "lines" : "#70af1d"
@@ -164,7 +196,39 @@ plotting:
     "links" : "#8a1caf"
     "HVDC links" : "#8a1caf"
     "DC-DC" : "#8a1caf"
+    "DC" : "#8a1caf"
     "DC link" : "#8a1caf"
+    "CC" : "k"
+    "gas boiler" : "#FF922B"
+    "SMR" : "#d6d6ba"
+    "SMR CC" : "#4F4F2F"
+    "CHP" : "r"
+    "DAC": "#1864ab"
+    "Fischer-Tropsch" : "#44DD33"
+    "battery storage" : "#b8ea04"
+    "air heat pump" : "#76EE00"
+    "ground heat pump" : "#40AA00"
+    "resistive heater" : "pink"
+    "hot water storage" : "#BBBBBB"
+    "Sabatier" : "#FF1493"
+    "methanation" : "#620035"
+    "helmeth" : "#7D0552"
+    "oil boiler" : "#B5A677"
+    "process emissions" : "#222222"
+    "process emissions CC" : "#ced4da"
+    "solid biomass for industry" : "#62baa0"
+    "solid biomass for industry CC" : "#2d6655"
+    "gas for industry" : "#ef5d5d"
+    "gas for industry CC" : "#8e0e0e"
+    "electricity distribution grid" : "#C8C8A9"
+    "co2 vent": "b"
+    "co2": "b"
+    "co2 stored": "b"
+    'CO2 sequestration': "b"
+    "biogas to gas" : "#800000"
+    "low voltage": "#c6c6c6"
+    "heat": "#ff8585"
+
   nice_names:
     OCGT: "Open-Cycle Gas"
     CCGT: "Combined-Cycle Gas"

@@ -62,7 +62,8 @@ def define_growth_limit(n, snapshots, c, attr):
 
     ext_i = get_extendable_i(n, c)
     if "carrier" not in n.df(c) or n.df(c).empty: return
-    limit_i = n.df(c)[n.df(c).isin(n.carriers.index)].loc[ext_i].index
+    with_limit = n.carriers[n.carriers.max_growth!=np.inf].index
+    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i,"carrier"].isin(with_limit)].index
     if limit_i.empty: return
     # active assets
     active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)

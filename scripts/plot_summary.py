@@ -85,9 +85,10 @@ def rename_techs(label):
 
     rename_if_contains_dict = {"water tanks" : "hot water storage",
                                "retrofitting" : "building retrofitting",
-                               "H2" : "hydrogen storage",
+                               # "H2" : "hydrogen storage",
                                "battery" : "battery storage",
-                               "CC" : "CC"}
+                               # "CC" : "CC"
+                               }
 
     rename = {"solar" : "solar PV",
               "Sabatier" : "methanation",
@@ -102,7 +103,8 @@ def rename_techs(label):
               "co2 stored" : "CO2 sequestration",
               "AC" : "transmission lines",
               "DC" : "transmission lines",
-              "B2B" : "transmission lines"}
+              "B2B" : "transmission lines",
+              "H2" : "hydrogen storage"}
 
     for ptr in prefix_to_remove:
         if label[:len(ptr)] == ptr:
@@ -130,7 +132,6 @@ def plot_costs():
     cost_df = pd.read_csv(snakemake.input.costs_csv,index_col=list(range(3)),
                           header=list(range(4)))
 
-
     df = cost_df.groupby(cost_df.index.get_level_values(2)).sum()
 
     df.rename(columns={"37": "DE"}, inplace=True)
@@ -138,7 +139,7 @@ def plot_costs():
     #convert to billions
     df = df/1e9
 
-    # df = df.groupby(df.index.map(rename_techs)).sum()
+    df = df.groupby(df.index.map(rename_techs)).sum()
 
     to_drop = df.index[df.max(axis=1) < snakemake.config['plotting']['costs_threshold']]
 
@@ -302,9 +303,9 @@ def plot_balances():
         df = df/1e6
 
         #remove trailing link ports
-        df.index = [i[:-1] if ((i != "co2") and (i[-1:] in ["0","1","2","3"])) else i for i in df.index]
+        df.index = [i[:-1] if ((i not in ["co2", "H2"]) and (i[-1:] in ["0","1","2","3"])) else i for i in df.index]
 
-        # df = df.groupby(df.index.map(rename_techs)).sum()
+        df = df.groupby(df.index.map(rename_techs)).sum()
 
         to_drop = df.index[df.abs().max(axis=1) < snakemake.config['plotting']['energy_threshold']/10]
 
@@ -319,6 +320,8 @@ def plot_balances():
         if df.empty:
             continue
 
+        df = df.groupby(df.index).sum()
+
         new_index = preferred_order.intersection(df.index).append(df.index.difference(preferred_order))
 
         new_columns = df.columns.sort_values()
@@ -327,8 +330,13 @@ def plot_balances():
         fig, ax = plt.subplots()
         fig.set_size_inches((12,8))
 
-        df.loc[new_index,new_columns].T.plot(kind="bar",ax=ax,stacked=True,color=[snakemake.config['plotting']['tech_colors'][i] for i in new_index])
+        df.loc[new_index,new_columns].T.plot(kind="bar",ax=ax,stacked=True,
+                                             color=[snakemake.config['plotting']['tech_colors']
+                                                    [i] for i in new_index])
 
+        ax.set_ylim([df[df<0].sum().min()*1.1, df[df>0].sum().max()*1.7])
+
+        ax.grid(axis="y", color="lightgrey")
 
         handles,labels = ax.get_legend_handles_labels()
 
@@ -342,12 +350,10 @@ def plot_balances():
 
         ax.set_xlabel("")
 
-        ax.grid(axis="y")
-
         ax.legend(handles,labels,ncol=4,loc="upper left")
 
 
-        fig.savefig(snakemake.output.balances[:-10] + k + ".pdf",transparent=True,
+        fig.savefig(snakemake.output.balances[:-10] + k + ".pdf", transparent=True,
                     bbox_inches="tight")
 
 
@@ -403,12 +409,12 @@ def historical_emissions(cts):
 
     opts = snakemake.config['scenario']['sector_opts']
 
-    if "T" in opts:
-        emissions += co2_totals.loc[[i+ " non-elec" for i in ["rail","road"]]].sum()
-    if "H" in opts:
-        emissions += co2_totals.loc[[i+ " non-elec" for i in ["residential","services"]]].sum()
-    if "I" in opts:
-        emissions += co2_totals.loc[["industrial non-elec","industrial processes",
+    # if "T" in opts:
+    emissions += co2_totals.loc[[i+ " non-elec" for i in ["rail","road"]]].sum()
+    # if "H" in opts:
+    emissions += co2_totals.loc[[i+ " non-elec" for i in ["residential","services"]]].sum()
+    # if "I" in opts:
+    emissions += co2_totals.loc[["industrial non-elec","industrial processes",
                                           "domestic aviation","international aviation",
                                           "domestic navigation","international navigation"]].sum()
     return emissions
@@ -420,19 +426,19 @@ def plot_carbon_budget_distribution():
     Plot historical carbon emissions in the EU and decarbonization path
     """
 
-    countries = pd.read_csv(snakemake.input.countries, index_col=1)
-    cts = countries.index.dropna().str[:2].unique()
+    cts = pd.Index(snakemake.config["countries"])#pd.read_csv(snakemake.input.countries, index_col=1)
+    # cts = countries.index.dropna().str[:2].unique()
     co2_emissions = pd.read_csv(snakemake.input.co2_emissions,
-                                index_col=0, header=list(range(n_header)))
+                                index_col=0, header=list(range(3)))
     # convert tCO2 to Gt CO2 per year -> TODO annual emissions
-    co2_emissions *= 1e-9 / 10
+    co2_emissions *= 1e-9
     # drop unnessary level
-    co2_emissions = co2_emissions.droplevel(level=[0,1], axis=1)
+    co2_emissions_grouped = co2_emissions.droplevel(level=[0,1], axis=1)
 
-    co2_emissions_grouped = co2_emissions.stack(0).groupby(level=1).sum().T
-    co2_emissions_grouped.index = [int(x) for x in co2_emissions_grouped.index]
+    # co2_emissions_grouped = co2_emissions.stack(0).groupby(level=1).sum().T
+    # co2_emissions_grouped.index = [int(x) for x in co2_emissions_grouped.index]
     # historical emissions
-    emissions = historical_emissions(cts)
+    emissions = historical_emissions(cts.to_list())
 
     import matplotlib.gridspec as gridspec
     import seaborn as sns; sns.set()
@@ -548,7 +554,7 @@ def learning_cost_vs_curve():
     cost_learning = cost_learning.stack().unstack(0).dropna(how="all", axis=1)
     # learning technologies
     learn_i = cost_learning.index
-    # installed capacities
+    # cumulative local installed capacities
     cum_cap = pd.read_csv(snakemake.input.cumulative_capacities,
                                 index_col=0, header=list(range(n_header)))
     cum_cap = cum_cap.stack().unstack(0).dropna(how="all", axis=1)
@@ -561,36 +567,45 @@ def learning_cost_vs_curve():
     for scenario in learn_carrier.columns:
         initial_capacity = learn_carrier.loc["global_capacity", scenario]
         global_factor = learn_carrier.loc["global_factor", scenario]
-        global_cum = cum_cap[scenario] / global_factor
-        global_cost = cost_learning[scenario]
-        tot = pd.concat([global_cum, global_cost], axis=1)
+        global_cum = (cum_cap[scenario] / global_factor) + initial_capacity
+        investment_cost = cost_learning[scenario]
+        tot = pd.concat([global_cum, investment_cost], axis=1)
         tot.columns = ["cap", "cost"]
         max_capacity = learn_carrier.loc["max_capacity", scenario]
         learning_rate = learn_carrier.loc["learning_rate", scenario]
         c0 = learn_carrier.loc["initial_cost", scenario]
+        # for the x-axis cumulative global capacity
         caps = pd.DataFrame(np.arange(initial_capacity, max_capacity,
                                       (max_capacity-initial_capacity)//1000),
                             columns=["cumualtive capacity"])
         caps.index = caps["cumualtive capacity"]
+        # cumulative investment (right y-axis)
         y_cum = caps.apply(lambda x: cumulative_cost_curve(x, learning_rate, c0, initial_capacity))
         y_cum.columns = ["cumulative investment costs"]
+        # specific investment costs [Eur/MW] (left y-axis)
         y = caps.apply(lambda x: experience_curve(x, learning_rate, c0, initial_capacity))
-        # get interpolation points
-        points= piecewise_linear(y_cum.iloc[:,0], 5, learning_rate, c0, initial_capacity, scenario[-1])
-
-        tot["cost"] =  tot.cost.apply(lambda x: x/1e3)
         y.columns = ["learning curve"]
-        y_cum.columns =  ["cumulative cost curve"]
+
+        # get interpolation points (number of points = line segments + 1)
+        points= piecewise_linear(y_cum.iloc[:,0], 5, learning_rate, c0, initial_capacity, scenario[-1])
+        # get interpolation of specific investment costs
+        interpolated_costs = get_slope(points).rename(index=lambda x: x+1)
+        interpolated_costs.loc[0] = c0
+
+        # convert Eur/MW to Eur/kW
+        interpolated_costs = interpolated_costs.sort_index() * 1e-3
+        tot["cost"] =  tot.cost.apply(lambda x: x/1e3)
+
 
         fig, ax = plt.subplots()
         plt.title(scenario)
 
-        plt.step(points.xs("x_fit", level=1, axis=1).shift(-1).dropna(),
-                 get_slope(points)/1e3,
+        plt.step(points.xs("x_fit", level=1, axis=1),
+                  interpolated_costs, where="mid",
                  lw=2, ls=":", color="green")
 
-        # plt.vlines(limit, ymin=y.min()/1e3,ymax=y.max()/1e3,
-        #            linestyle="--", color="grey")
+        plt.vlines(points[scenario[-1], "x_fit"].values, ymin=y.min()/1e3,ymax=y.max()/1e3,
+                    linestyle="-", color="grey", alpha=0.2)
 
         (y/1e3).plot(ax=ax, lw=2, legend=False, color='#1f77b4')
 
@@ -602,18 +617,23 @@ def learning_cost_vs_curve():
 
         ax2=ax.twinx()
         (y_cum/1e9).plot(ax=ax2,  lw=2, color='#1f77b4')
-        ax2.set_ylabel("total cumulative cost \n [billion Eur]")
+        ax2.set_ylabel("total cumulative cost for new capacity \n [billion Eur]")
 
         for lr in points.columns.levels[0]:
             lin = points[lr].set_index("x_fit").rename(columns={"y_fit":"piece-wise linearisation"})
             (lin/1e9).plot(marker="*", ls="--", ax=ax2, grid=True, lw=2,
                            markersize=10, color="green")
 
+        # tot2.plot(kind="scatter", x= 'global_cap', y="cum_cost", ax=ax2,
+        #   marker="x",  s=100, color="orange", grid=True)
+
         plt.legend(bbox_to_anchor=(1.2,1))
 
-        fig.savefig(snakemake.output.learning_cost_vs_curve + "/{}.pdf".format(scenario),
+        fig.savefig(snakemake.output.learning_cost_vs_curve.replace("learning_cost.pdf", "") + "{}.pdf".format(scenario),
                  bbox_inches="tight")
-        #%%
+
+        fig.savefig(snakemake.output.learning_cost_vs_curve,
+                 bbox_inches="tight")
 
 def plot_capacities():
     capacities = pd.read_csv(snakemake.input.capacities,
@@ -621,21 +641,23 @@ def plot_capacities():
 
     capacities = capacities.droplevel(level=[0,1], axis=1) / 1e3
 
+    capacities = capacities.rename(index=lambda x: rename_techs(x), level=1).groupby(level=1).sum()
+
     fig, ax = plt.subplots(len(capacities.stack().columns), 1,  sharex=True)
     fig.set_size_inches((10,10))
 
     for i, scenario in enumerate(capacities.stack().columns):
 
-        capacities.loc["generators", scenario].T.plot(kind="bar",ax=ax[i],
+        capacities[scenario].T.plot(kind="bar",ax=ax[i],
                                         title=str(scenario), legend=False,
-                            color=[snakemake.config['plotting']['tech_colors'][i] for i in capacities.loc["generators"].index])
+                            color=[snakemake.config['plotting']['tech_colors'][i] for i in capacities.index])
 
 
 
 
         ax[i].set_xlabel("")
 
-        ax[i].set_ylim([0,capacities.loc["generators"].max().max()*1.1])
+        ax[i].set_ylim([0,capacities.max().max()*1.1])
 
         ax[i].grid(axis="y")
 
@@ -665,7 +687,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
         snakemake = mock_snakemake('plot_summary',
-                                   sector_opts='Co2L-2p24h-learnsolarp0-learnonwindp10',
+                                   sector_opts='Co2L-876h-learnsolarp0-learnonwindp10',
                                    clusters='37')
 
 
@@ -681,3 +703,6 @@ if __name__ == "__main__":
 
     plot_capital_costs_learning()
 
+    learning_cost_vs_curve()
+
+    plot_capacities()

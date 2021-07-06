@@ -17,12 +17,6 @@ import logging
 from vresutils.benchmark import memory_logger
 from vresutils.costdata import annuity
 
-if 'snakemake' not in globals():
-    os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
-    from _helpers import mock_snakemake
-    # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
-    snakemake = mock_snakemake('solve_network_single_ct',  sector_opts= 'Co2L-2p24h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0', clusters='37')
-
 import pypsa_learning as pypsa
 from learning import add_learning
 from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
@@ -48,41 +42,26 @@ override_component_attrs["Link"].loc["p3"] = ["series","MW",0.,"3rd bus output",
 override_component_attrs["Link"].loc["p4"] = ["series","MW",0.,"4th bus output","Output"]
 
 #%%
+# maps pypsa name to technology data name
+map_dict = {'H2 electrolysis':"electrolysis",
+            'H2 fuel cell': "fuel cell",
+            'battery charger':"battery inverter",
+            'battery discharger':"battery inverter",
+            "H2" : 'hydrogen storage underground',
+            "battery": "battery storage",
+            "offwind-ac": "offwind",
+            "offwind-dc":"offwind"}
+
+
 def get_social_discount(t, r=0.01):
+    """Calculate for a given time t the social discount."""
     return (1/(1+r)**t)
 
 
-def set_new_sns_invp(n, inv_years):
-    """
-    set new snapshots (sns) for all time varying componentents and
-    investment_periods depending on investment years ('inv_years')
-
-    input:
-        n: pypsa.Network()
-        inv_years: list of investment periods, e.g. [2020, 2030, 2040]
-
-    """
-
-    for component in n.all_components:
-        pnl = n.pnl(component)
-        attrs = n.components[component]["attrs"]
-
-        for k,default in attrs.default[attrs.varying].iteritems():
-            pnl[k] = pd.concat([(pnl[k].rename(index=lambda x: x.replace(year=year), level=1)
-                                       .rename(index=lambda x: n.snapshots.get_level_values(level=1)[0].replace(year=year), level=0))
-                                for year in inv_years])
-
-    # set new snapshots + investment period
-    n.snapshot_weightings = pd.concat([(n.snapshot_weightings.rename(index=lambda x: x.replace(year=year), level=1)
-                                       .rename(index=lambda x: n.snapshots.get_level_values(level=1)[0].replace(year=year), level=0))
-                                for year in inv_years])
-    n.set_snapshots(n.snapshot_weightings.index)
-    n.set_investment_periods(n.snapshots)
-
-
 def get_investment_weighting(energy_weighting, r=0.01):
-    """
-    returns cost weightings depending on the the energy_weighting (pd.Series)
+    """Define cost weighting.
+
+    Returns cost weightings depending on the the energy_weighting (pd.Series)
     and the social discountrate r
     """
     end = energy_weighting.cumsum()
@@ -92,8 +71,8 @@ def get_investment_weighting(energy_weighting, r=0.01):
                                                 axis=1)
 
 
-
 def average_every_nhours(n, offset):
+    """Temporal aggregate pypsa Network depending on offset."""
     logger.info('Resampling the network to {}'.format(offset))
     m = n.copy(with_time=False)
 
@@ -126,6 +105,16 @@ def average_every_nhours(n, offset):
 
 
 def prepare_network(n, solve_opts=None):
+    """Add solving options to the network before calling the lopf.
+
+    Solving options (solve_opts (type dict)), keys which effect the network in
+    this function:
+
+         'load_shedding'
+         'noisy_costs'
+         'clip_p_max_pu'
+         'n_hours'
+    """
     if solve_opts is None:
         solve_opts = snakemake.config['solving']['options']
 
@@ -167,9 +156,7 @@ def prepare_network(n, solve_opts=None):
 
 
 def prepare_costs(cost_file, discount_rate, lifetime):
-    """
-    prepare cost data
-    """
+    """Prepare cost data."""
     #set all asset costs and other parameters
     costs = pd.read_csv(cost_file,index_col=list(range(2))).sort_index()
 
@@ -192,32 +179,25 @@ def prepare_costs(cost_file, discount_rate, lifetime):
     return costs
 
 def prepare_costs_all_years(years):
-    """
-    prepares cost data for multiple years
-    """
+    """Prepare cost data for multiple years."""
     all_costs = {}
-
     for year in years:
         all_costs[year] = prepare_costs(snakemake.input.costs + "/costs_{}.csv".format(year),
                               snakemake.config['costs']['discountrate'],
                               snakemake.config['costs']['lifetime'])
+
+    if not snakemake.config["costs"]["update_costs"]:
+        for year in years:
+            all_costs[year] = all_costs[years[0]]
+
     return all_costs
 
 
 def update_other_costs(n,costs, years):
-    """
-    TODO marginal cost
-    update all costs according to technology data base
-    """
-    map_dict = {'H2 electrolysis':"electrolysis",
-                'H2 fuel cell': "fuel cell",
-                'battery charger':"battery inverter",
-                'battery discharger':"battery inverter",
-                "H2" : 'hydrogen storage underground',
-                "battery": "battery storage",
-                "offwind-ac": "offwind",
-                "offwind-dc":"offwind"}
+    """Update all costs according to technology data base.
 
+    TODO marginal cost
+    """
     for c in n.iterate_components(n.one_port_components|n.branch_components):
         df = c.df
         if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
@@ -226,12 +206,13 @@ def update_other_costs(n,costs, years):
             c.df["efficiency"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["efficiency"]).fillna(c.df.efficiency)
         c.df["lifetime"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["lifetime"]).fillna(c.df.lifetime)
 
-def update_wind_solar_costs(n,costs, years):
-    """
-    Update costs for wind and solar generators added with pypsa-eur to those
-    cost in the planning year
-    """
 
+def update_wind_solar_costs(n,costs, years):
+    """Update costs for wind and solar generators.
+
+    Update wind and solar costs added with pypsa-eur to those cost in the
+    planning year
+    """
     #assign clustered bus
     #map initial network -> simplified network
     busmap_s = pd.read_csv(snakemake.input.busmap_s, index_col=0).squeeze()
@@ -287,129 +268,169 @@ def update_wind_solar_costs(n,costs, years):
                 n.generators.loc[(n.generators.carrier==tech)  & (n.generators.build_year==year),
                                  'capital_cost'] = capital_cost.rename(index=lambda node: node + ' ' + tech + " " +str(year))
 
+
+def prepare_data(gf_default=0.3):
+    """Prepare data for multi-decade and technology learning.
+
+    Parameters:
+        Returns:
+            countries: considered countries
+            global_capacity: global installed capacity
+            local_capacity: current capacities in countries
+            p_nom: used to adjust powerplantmatching data to IRENA data
+            p_nom_max_limit: max potential for renewables at one bus
+    """
+    # considered countries
+    countries = n.buses.country.unique()
+    n.generators["country"] = n.generators.bus.map(n.buses.country)
+    # read in current installed capacities
+    global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0).iloc[:,0]
+    local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
+    local_capacity = local_capacity[local_capacity.alpha_2.isin(countries)]
+    # data to adjust already installed capacity according to IRENA
+    local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
+    p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
+            .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
+    # for GlobalConstraint of the technical limit at each node, get the p_nom_max
+    p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum()
+
+    # global factor
+    global_factor = (local_capacity.groupby(local_capacity.index).sum()
+                     .div(global_capacity, axis=0).fillna(gf_default).iloc[:,0])
+
+    return (countries, global_capacity, local_caps, p_nom, p_nom_max_limit,
+            global_factor)
+
+def update_network(n, p_nom):
+    """Prepare network for multi-decade.
+
+    (1) Assign installed capacity align with IRENA data, drops old global
+        constraints
+    (2) drop old global constraints
+    (3) update the cost assumptions and efficiencies
+    """
+    # TODO IRENA data is per country assign capacity to first bus
+    first_bus = (n.buses.reset_index()).groupby(n.buses.reset_index().country).first().name
+    gen_i = p_nom[~p_nom.isna() & n.generators.bus.isin(first_bus)].index
+    not_first = p_nom[~p_nom.isna()].index.difference(gen_i)
+    n.generators.loc[not_first, "p_nom"] = 0
+    n.generators.loc[gen_i, "p_nom"] = p_nom.loc[gen_i]
+    # drop old global constraints
+    n.global_constraints.drop(n.global_constraints.index, inplace=True)
+    # update costs to DEA database
+    update_other_costs(n, costs, years)
+
+
+def set_scenario_opts(n, opts):
+    """
+    """
+    for o in opts:
+        # learning
+        if "learn" in o:
+            techs = list(snakemake.config["learning_rates"].keys())
+            if any([tech in o.replace("x", " ") for tech in techs]):
+                tech = [tech for tech in techs if tech in o.replace("x", " ")][0]
+                learn_diff = float(o[len("learn"+tech):].replace("p",".").replace("m","-"))
+                learning_rate = snakemake.config["learning_rates"][tech] + learn_diff
+                factor = global_factor.loc[tech]
+                logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
+                if tech not in n.carriers.index:
+                    n.add("Carrier",
+                          name=tech)
+                n.carriers.loc[tech, "learning_rate"] = learning_rate
+                n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech]
+                n.carriers.loc[tech, "max_capacity"] = 10 * global_capacity.loc[tech]
+                n.carriers.loc[tech, "global_factor"] = factor
+                # TODO
+                if tech=="H2 electrolysis":
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] *= 10
+
+        # temporal clustering
+        m = re.match(r'^\d+h$', o, re.IGNORECASE)
+        if m is not None:
+            n = average_every_nhours(n, m.group(0))
+        # representive snapshots
+        m = re.match(r'^\d+sn$', o, re.IGNORECASE)
+        if m is not None:
+            sn = int(m.group(0).split("sn")[0])
+            n.set_snapshots(n.snapshots[::sn])
+            n.snapshot_weightings *= sn
+        # typical periods
+        m = re.match(r'^\d+p\d\d+h', o, re.IGNORECASE)
+        if m is not None:
+            opts_t = snakemake.config['temporal_aggregation']
+            n_periods = int(o.split("p")[0])
+            hours = int(o.split("p")[1].split("h")[0])
+            clusterMethod = opts_t["clusterMethod"].replace("-", "_")
+            extremePeriodMethod = opts_t["extremePeriodMethod"].replace("-", "_")
+            kind = opts_t["kind"]
+
+            logger.info("\n------temporal clustering----------------------------\n"
+                        "aggregrate network to {} periods with length {} hours. \n"
+                        "Cluster method: {}\n"
+                        "extremePeriodMethod: {}\n"
+                        "optimisation kind: {}\n"
+                        "------------------------------------------------------\n"
+                        .format(n_periods, hours, clusterMethod, extremePeriodMethod, kind))
+
+            aggregate_snapshots(n, n_periods=n_periods, hours=hours, clusterMethod=clusterMethod,
+                        extremePeriodMethod=extremePeriodMethod)
+
+
+
+def set_multi_index(n, years, social_discountrate):
+    """Set snapshots to pd.MultiImdex."""
+    snapshots = pd.MultiIndex.from_product([years, n.snapshots])
+    n.set_snapshots(snapshots)
+
+    # set investment_weighting
+    n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(10).values
+    n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], social_discountrate)
+
+
+def phase_out(build_year, lifetime,
+              conventionals = ["lignite", "coal", "oil", "nuclear", "CCGT"]):
+    """Define phase out time of generators."""
+    gens = n.generators[n.generators.carrier.isin(conventionals)].index
+    n.generators.loc[gens, "build_year"] = build_year
+    n.generators.loc[gens, "lifetime"] = lifetime
+
 #%%
-years = [2020, 2030, 2040, 2050]
-investment = pd.DatetimeIndex(['{}-01-01 00:00'.format(year) for year in years])
-r = 0.01 # social discountrate
-# Only consider a few snapshots to speed up the calculations
+# for testing
+if 'snakemake' not in globals():
+    os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
+    from _helpers import mock_snakemake
+    # snakemake = mock_snakemake('solve_network', lv='1.0', clusters='37',
+    #                            sector_opts='Co2L-2p24h-learnsolarp0')
+    snakemake = mock_snakemake('solve_network_single_ct',
+                               sector_opts= 'Co2L-2p24h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0',
+                               clusters='37')
+
+# import pypsa network
 n = pypsa.Network(snakemake.input.network,
                   override_component_attrs=override_component_attrs)
 
-# costs
-costs = prepare_costs_all_years(years)
-if not snakemake.config["costs"]["update_costs"]:
-    for year in years:
-        costs[year] = costs[years[0]]
-# considered countries
-countries = n.buses.country.unique()
-# drop old global constraints
-n.global_constraints.drop(n.global_constraints.index, inplace=True)
-# update costs to DEA database all according to 2020
-update_other_costs(n,costs, years)
-
-# read in current installed capacities
-global_capacity = pd.read_csv(snakemake.input.global_capacity, index_col=0)
-local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
-local_capacity = local_capacity[local_capacity.alpha_2.isin(countries)]
-
+# parameters
+years = snakemake.config["investment_periods"]
+social_discountrate = snakemake.config["costs"]["social_discountrate"]
 # scenario options
 opts = snakemake.wildcards.sector_opts.split('-')
 
-for o in opts:
-    # learning
-    if "learn" in o:
-        techs = list(snakemake.config["learning_rates"].keys())
-        if any([tech in o.replace("x", " ") for tech in techs]):
-            tech = [tech for tech in techs if tech in o.replace("x", " ")][0]
-            factor = float(o[len("learn"+tech):].replace("p",".").replace("m","-"))
-            learning_rate = snakemake.config["learning_rates"][tech] + factor
-            factor = local_capacity.groupby(local_capacity.index).sum().reindex(pd.Index([tech])).loc[tech,"Electricity Installed Capacity (MW)" ] / global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            # TODO if local capacity is missing assume share of 1/3
-            if np.isnan(factor): factor = 0.3
-            logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
-            if tech not in n.carriers.index:
-                n.add("Carrier",
-                      name=tech,
-                      learning_rate=learning_rate,
-                      global_capacity=global_capacity.loc[tech, 'Electricity Installed Capacity (MW)'],
-                      max_capacity=12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)'],
-                      global_factor=factor)
-            n.carriers.loc[tech, "learning_rate"] = learning_rate
-            n.carriers.loc[tech, "global_capacity"] = global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            n.carriers.loc[tech, "max_capacity"] = 12 * global_capacity.loc[tech, 'Electricity Installed Capacity (MW)']
-            n.carriers.loc[tech, "global_factor"] = factor
-            # TODO
-            if tech=="H2 electrolysis":
-                n.carriers.loc["H2 electrolysis", "max_capacity"] *= 4
+# costs
+costs = prepare_costs_all_years(years)
+# prepare data
+countries, global_capacity, local_capacity, p_nom, p_nom_max_limit, global_factor = prepare_data()
 
-    # temporal clustering
-    m = re.match(r'^\d+h$', o, re.IGNORECASE)
-    if m is not None:
-        n = average_every_nhours(n, m.group(0))
-    # representive snapshots
-    m = re.match(r'^\d+sn$', o, re.IGNORECASE)
-    if m is not None:
-        sn = int(m.group(0).split("sn")[0])
-        n.set_snapshots(n.snapshots[::sn])
-        n.snapshot_weightings *= sn
-    # typical periods
-    m = re.match(r'^\d+p\d\d+h', o, re.IGNORECASE)
-    if m is not None:
-        opts_t = snakemake.config['temporal_aggregation']
-        n_periods = int(o.split("p")[0])
-        hours = int(o.split("p")[1].split("h")[0])
-        clusterMethod = opts_t["clusterMethod"].replace("-", "_")
-        extremePeriodMethod = opts_t["extremePeriodMethod"].replace("-", "_")
-        kind = opts_t["kind"]
+# modify pypsa network
+update_network(n, p_nom)
+# set scenario options
+set_scenario_opts(n, opts)
+# set snapshots MultiIndex and investment weightings
+set_multi_index(n, years, social_discountrate)
 
-        logger.info("---------------------------------------------")
-        logger.info("aggregrate network to {} periods with length {} hours.".format(n_periods, hours))
-        logger.info("Cluster method ", clusterMethod)
-        logger.info("extremePeriodMethod ", extremePeriodMethod)
-        logger.info("optimisation kind ", kind)
-        logger.info("-----------------------------------------------")
-
-        aggregate_snapshots(n, n_periods=n_periods, hours=hours, clusterMethod=clusterMethod,
-                    extremePeriodMethod=extremePeriodMethod)
-
-
-# For GlobalConstraint of the technical limit at each node, get the p_nom_max
-p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum()
-
-
-snapshots = pd.MultiIndex.from_product([years, n.snapshots])
-n.set_snapshots(snapshots)
-
-sns=n.snapshots
-
-# set investment_weighting
-n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(10).values
-n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], r)
-
-
-# ### Play around with assumptions:
-
-# adjust already installed capacity according to IRENA
-n.generators["country"] = n.generators.index.str[:2]
-local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
-p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
-        .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
-# TODO IRENA data is per country assign capacity to first bus
-first_bus = (n.buses.reset_index()).groupby(n.buses.reset_index().country).first().name
-
-gen_i = p_nom[~p_nom.isna() & n.generators.bus.isin(first_bus)].index
-not_first = p_nom[~p_nom.isna()].index.difference(gen_i)
-n.generators.loc[not_first, "p_nom"] = 0
-n.generators.loc[gen_i, "p_nom"] = p_nom.loc[gen_i]
-
+# ### Play around with assumptions: ------------------------------------
 # 1) conventional phase out
-# conventional lifetime + build year
-conventionals = ["lignite", "coal", "oil", "nuclear", "CCGT"]
-gens = n.generators[n.generators.carrier.isin(conventionals)].index
-n.generators.loc[gens, "build_year"] = 2013
-n.generators.loc[gens, "lifetime"] = 20
-
-
+phase_out(2013, 20)
 
 # 2.) renewable generator assumptions (e.g. can be newly build in each investment
 # period, capital costs are decreasing,...)
@@ -423,13 +444,12 @@ df = n.generators.loc[gen_names]
 p_max_pu = n.generators_t.p_max_pu[gen_names]
 # add new renewable generator for each investment period
 for year in years:
-    df.lifetime = costs[year].loc[df.carrier.apply(lambda x: x.split("-")[0]), "lifetime"].values
+    df.lifetime = df.carrier.replace(map_dict).map(costs[year]["lifetime"])
     n.madd("Generator",
            df.index,
            suffix=" " + str(year),
            bus=df.bus,
            carrier=df.carrier,
-           p_nom = df.p_nom if year==years[0] else 0.,
            p_nom_extendable=True,
            p_nom_max=df.p_nom_max,
            build_year=year,
@@ -444,8 +464,7 @@ update_wind_solar_costs(n,costs, years)
 
 # ----- make OCGT extendable every investment period
 df = n.generators[n.generators.carrier=="OCGT"]
-# drop old OCGT
-n.generators = n.generators[n.generators.carrier!="OCGT"]
+
 # add OCGT
 for year in years:
     n.madd("Generator",
@@ -454,7 +473,6 @@ for year in years:
            bus=df.bus,
            carrier=df.carrier,
            p_nom_extendable=True,
-           p_nom = df.p_nom if year==years[0] else 0.,
            build_year=year,
            marginal_cost=df.marginal_cost,
            lifetime=costs[year].loc["OCGT", "lifetime"],
@@ -470,7 +488,7 @@ df = n.links.loc[h2_names]
 n.links.drop(h2_names, inplace=True)
 # add new renewable generator for each investment period
 for year in years:
-    df.lifetime = costs[year].loc[df.carrier.replace({"H2 electrolysis":"electrolysis", "H2 fuel cell": "fuel cell"}).apply(lambda x: x.split("-")[0]), "lifetime"].values
+    df.lifetime = df.carrier.replace(map_dict).map(costs[year]["lifetime"])
     n.madd("Link",
            df.index,
            suffix=" " + str(year),
@@ -523,28 +541,12 @@ for tech in learn_i:
 # increase load
 weight = pd.Series(np.arange(1.,2.0, 1/len(years)), index=years)
 n.loads_t.p_set = n.loads_t.p_set.mul(weight, level=0, axis="index")
-# 3.) build year / transmission expansion for AC Lines and DC Links
-
-# later_lines = n.lines.iloc[::5].index
-# n.lines.loc[later_lines, "build_year"] = 2030
-# later_lines = n.lines.iloc[::7].index
-# n.lines.loc[later_lines, "build_year"] = 2040
-# n.lines["s_nom_extendable"] = True
-# n.links["p_nom_extendable"] = True
 
 
-# 4.) Test global constraints <br>
-# a) CO2 constraint: can be specified as a budget,  which limits the CO2
-#    emissions over all investment_periods
-# b)  or/and implement as a constraint for an investment period, if the
-# GlobalConstraint attribute "investment_period" is not specified, the limit
-#  applies for each investment period.
-
-
-# (a) add CO2 Budget constraint
+# (a) add CO2 Budget constraint ------------------------------------
 budget = snakemake.config["co2_budget"]["1p5"] * 1e9  # budget for + 1.5 Celsius for Europe
 # TODO currently only electricity sector, take about a third
-budget /= 10
+budget /= 3
 # TODO
 if all(countries==["DE"]):
     budget *= 0.19  # share of German population in Europe
@@ -560,7 +562,7 @@ n.add("GlobalConstraint",
       "CO2neutral",
       type="primary_energy",
       carrier_attribute="co2_emissions",
-      investment_period=sns.levels[0][-1],
+      investment_period=n.snapshots.levels[0][-1],
       sense="<=",
       constant=0)
 
@@ -568,8 +570,8 @@ n.add("GlobalConstraint",
 
 # global p_nom_max for each carrier + investment_period at each node
 p_nom_max_inv_p = pd.DataFrame(np.repeat([p_nom_max_limit.values],
-                                         len(sns.levels[0]), axis=0),
-                               index=sns.levels[0], columns=p_nom_max_limit.index)
+                                         len(n.snapshots.levels[0]), axis=0),
+                               index=n.snapshots.levels[0], columns=p_nom_max_limit.index)
 
 if snakemake.config["tech_limit"]:
     logger.info("set technical potential at each node")
@@ -584,10 +586,9 @@ if snakemake.config["tech_limit"]:
               bus=nodes,
               constant=max_cap)
 
-# limit max growth per year
-n.carriers.loc[:, "max_growth"] = 20e3
-n.carriers.loc["H2", "max_growth"] = np.inf
-
+# TODO limit max growth per year
+n.carriers.loc[renewables, "max_growth"] = len(countries) * 15e3
+#---------------------------------------------------------------------------
 if any(n.carriers.learning_rate!=0):
     extra_functionality = add_learning
     skip_objective = True
@@ -625,6 +626,11 @@ with memory_logger(filename=getattr(snakemake.log, 'memory', None), interval=30.
            typical_period=typical_period)
 
     n.export_to_netcdf(snakemake.output[0])
+
+    # for key in n.sols["Carrier"]["pnl"]:
+    #     data = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).mean())
+    #     data.to_csv("/home/ws/bw0928/Dokumente/learning_curve/results/test/csvs/{}.csv".format(key))
+
 
 logger.info("Maximum memory usage: {}".format(mem.mem_usage))
 
