@@ -103,3 +103,29 @@ ax2.set_ylabel("cumulative cost \n [million Eur]")
 lin = points[lr].set_index("x_fit").rename(columns={"y_fit":"piece-wise linearisation"})
 lin.plot(marker="*", ls="--", ax=ax2, grid=True, lw=2, markersize=10)
 plt.legend(bbox_to_anchor=(1.2,1))
+#%% needs pandas=1.3
+import seaborn as sns
+cm = sns.light_palette("#2ecc71", as_cmap=True)
+data = pd.read_csv("/home/ws/bw0928/Dokumente/learning_curve/notes/learning_technologies.csv",
+                   index_col=0)
+data.rename(columns=lambda x: x.replace("%","\%"), inplace=True)
+data[data.columns[-1]] = (round(data[data.columns[-1]], ndigits=2)*100).astype(int)
+data[data.columns[0]] = round(data[data.columns[0]], ndigits=3).astype(int)
+data[data.columns[1]] = (data[data.columns[1]]).astype(int)
+s = data.style.background_gradient(cmap=cm, axis=0)
+table = s.to_latex(convert_css=True, caption="Technologie learning")
+#%%
+parameters = pd.read_csv("/home/ws/bw0928/Dokumente/learning_curve/notes/parameters.csv",
+                         index_col=0)
+table=parameters.to_latex(escape=False,
+                          caption="Constants and Variables.")
+def custom_style(row):
+
+    color = 'white'
+    if row.values[-1] == 'MM':
+        color = 'yellow'
+
+    return ['background-color: %s' % color]*len(row.values)
+
+s = parameters.style.apply(custom_style, axis=1)
+table = s.to_latex(convert_css=True, caption="Parameter and variables.")

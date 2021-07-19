@@ -201,23 +201,23 @@ def calculate_costs(n,label,costs):
         costs.loc[capital_costs_grouped.index,label] = capital_costs_grouped.values
 
         if c.name == "Link":
-            p = c.pnl.p0.multiply(n.snapshot_weightings.objective_weightings,axis=0).sum()
+            p = c.pnl.p0.multiply(n.snapshot_weightings.generator_weightings,axis=0).groupby(level=0).sum()
         elif c.name == "Line":
             continue
         elif c.name == "StorageUnit":
             p_all = c.pnl.p.multiply(n.snapshot_weightings.store_weightings,axis=0)
             p_all[p_all < 0.] = 0.
-            p = p_all.sum()
+            p = p_all.groupby(level=0).sum()
         else:
-            p = c.pnl.p.multiply(n.snapshot_weightings.generator_weightings,axis=0).sum()
+            p =round(c.pnl.p, ndigits=2).multiply(n.snapshot_weightings.generator_weightings,axis=0).groupby(level=0).sum()
 
         #correct sequestration cost
         if c.name == "Store":
             items = c.df.index[(c.df.carrier == "co2 stored") & (c.df.marginal_cost <= -100.)]
             c.df.loc[items,"marginal_cost"] = -20.
 
-        marginal_costs = p*c.df.marginal_cost
-        marginal_costs = active.mul(marginal_costs, axis=0)
+        marginal_costs = p.mul(c.df.marginal_cost).T
+        # marginal_costs = active.mul(marginal_costs, axis=0)
         marginal_costs_grouped = marginal_costs.groupby(c.df.carrier).sum().mul(discount)
 
         marginal_costs_grouped = pd.concat([marginal_costs_grouped], keys=["marginal"])
@@ -650,7 +650,9 @@ def calculate_capital_costs_learning(n, label, df):
         if learn_assets.empty: continue
         capital_cost = (n.df(c).loc[learn_assets]
                         .groupby([n.df(c).carrier,n.df(c).build_year])
-                        .mean().capital_cost.unstack())
+                        .mean().capital_cost.unstack()
+                        .reindex(columns=investments))
+        capital_cost.fillna(method="ffill", axis=1)
 
         df = df.reindex(capital_cost.index.union(df.index))
 
@@ -680,7 +682,7 @@ def calculate_cumulative_capacities(n, label, cum_cap):
 
         if caps.empty:continue
 
-        caps = round(caps.unstack()[investments].cumsum(axis=1))
+        caps = round(caps.unstack().reindex(columns=investments).fillna(0).cumsum(axis=1))
         cum_cap = cum_cap.reindex(caps.index.union(cum_cap.index))
 
         cum_cap.loc[caps.index,label] = caps.values

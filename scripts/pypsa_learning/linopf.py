@@ -31,6 +31,7 @@ from .linopt import (linexpr, write_bound, write_constraint, write_objective,
                      define_constraints, define_variables, define_binaries,
                      align_with_static_component)
 
+from .learning import get_linear_interpolation_points, get_slope
 
 import pandas as pd
 import numpy as np
@@ -735,7 +736,7 @@ def define_global_constraints(n, sns):
         stores = n.stores.query('carrier in @emissions.index and not e_cyclic')
         if not stores.empty:
             coeff_val = (-stores.carrier.map(emissions), get_var(n, 'Store', 'e')
-                         .loc[sns[-1], stores.index])
+                         .groupby(level=0).last()[stores.index])
             vals = linexpr(coeff_val, as_pandas=False)
             lhs = lhs + '\n' + join_exprs(vals)
             rhs -= stores.carrier.map(emissions) @ stores.e_initial
@@ -854,7 +855,7 @@ def define_objective(n, sns):
 
     objective_weightings = (n.snapshot_weightings
                             .mul(n.investment_period_weightings["objective_weightings"]
-                                 .reindex(sns)
+                                 .reindex(sns, level=0)
                             .fillna(method="bfill").fillna(1.), axis=0))
 
     # constant for already done investment
@@ -1070,6 +1071,27 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
     n.solutions = pd.DataFrame(index=n.variables.index, columns=['in_comp', 'pnl'])
     for c, attr in n.variables.index:
         map_solution(c, attr)
+
+    # overwrite capital cost
+    learn_i = n.carriers[n.carriers.learning_rate!=0].index
+    if not learn_i.empty:
+        l=round(n.sols["Carrier"]["pnl"]["learning"].groupby(level=0).first())
+        segments = len(l.columns.levels[1])
+        investments = l.index
+        x_low = n.carriers.loc[learn_i, "global_capacity"]
+        x_high = n.carriers.loc[learn_i, "max_capacity"]
+        points = get_linear_interpolation_points(n, x_low, x_high, segments)
+        slope = get_slope(points)
+        slope_t = expand_series(slope.stack().swaplevel().reindex(l.columns), investments).T
+        capital_cost = (l * slope_t).groupby(level=0, axis=1).sum()
+        for comp, attribute in nominal_attrs.items():
+                    ext_i = get_extendable_i(n, comp)
+                    if "carrier" not in n.df(comp) or n.df(comp).empty: continue
+                    learn_assets = n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
+                    learn_assets = ext_i.intersection(n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index)
+                    if learn_assets.empty: continue
+                    n.df(comp).loc[learn_assets, "capital_cost"] = n.df(comp).loc[learn_assets].apply(lambda x: capital_cost.loc[x.loc["build_year"], x.loc["carrier"]],
+                                                                                    axis=1)
 
     # if nominal capcity was no variable set optimal value to nominal
     for c, attr in lookup.query('nominal').index.difference(n.variables.index):

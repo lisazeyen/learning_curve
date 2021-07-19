@@ -30,12 +30,15 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 # pypsa names to technology data
 pypsa_to_database = {'H2 electrolysis':"electrolysis",
                     'H2 fuel cell': "fuel cell",
+                    'H2 Fuel Cell': "fuel cell",
                     'battery charger':"battery inverter",
                     'battery discharger':"battery inverter",
                     "H2" : 'hydrogen storage underground',
                     "battery": "battery storage",
                     "offwind-ac": "offwind",
-                    "offwind-dc":"offwind"}
+                    "offwind-dc":"offwind",
+                    "DAC": "direct air capture",
+                    "battery charger": "battery inverter"}
 
 #%%
 def prepare_costs(cost_file, discount_rate, lifetime):
@@ -134,7 +137,7 @@ def plot_costs():
 
     df = cost_df.groupby(cost_df.index.get_level_values(2)).sum()
 
-    df.rename(columns={"37": "DE"}, inplace=True)
+    # df.rename(columns={"37": "DE"}, inplace=True)
 
     #convert to billions
     df = df/1e9
@@ -183,7 +186,7 @@ def plot_costs():
 
     # PLOT 2 ##############################################################
     fig, ax = plt.subplots(len(df.stack().columns), 1,  sharex=True)
-    fig.set_size_inches((10,10))
+    fig.set_size_inches((10,20))
     for i, scenario in enumerate(df.stack().columns):
 
         df.loc[new_index, scenario].T.plot(kind="bar",ax=ax[i], stacked=True,
@@ -326,7 +329,10 @@ def plot_balances():
 
         new_columns = df.columns.sort_values()
 
-
+        dict_re = {'Co2L-73sn-co2seq1': "no_learning",
+                   'Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-co2seq1': "global learning",
+                   'Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-co2seq1-local':"local_learning",
+                   'Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp10-learnH2xFuelxCellp10-learnDACp10-learnsolarp0-co2seq1':"strong_learning"}
         fig, ax = plt.subplots()
         fig.set_size_inches((12,8))
 
@@ -430,6 +436,8 @@ def plot_carbon_budget_distribution():
     # cts = countries.index.dropna().str[:2].unique()
     co2_emissions = pd.read_csv(snakemake.input.co2_emissions,
                                 index_col=0, header=list(range(3)))
+
+    co2_emissions = co2_emissions.diff().fillna(co2_emissions.iloc[0,:])
     # convert tCO2 to Gt CO2 per year -> TODO annual emissions
     co2_emissions *= 1e-9
     # drop unnessary level
@@ -513,39 +521,41 @@ def plot_capital_costs_learning():
 
     cost_learning = cost_learning.droplevel(level=[0,1], axis=1)/1e3
 
+    for tech in cost_learning.index:
+        fig, ax = plt.subplots(len(cost_learning.stack().columns), 1,
+                               sharex=True)
+        fig.set_size_inches((10,10))
+        for i, scenario in enumerate(cost_learning.stack().columns):
 
-    fig, ax = plt.subplots(len(cost_learning.stack().columns), 1,
-                           sharex=True)
-    fig.set_size_inches((10,10))
-    for i, scenario in enumerate(cost_learning.stack().columns):
+            cost_learning.loc[tech,scenario].T.plot(kind="bar",ax=ax[i],
+                                            title=str(scenario), legend=False,
+                                color=[snakemake.config['plotting']['tech_colors'][tech]])
 
-        cost_learning[scenario].T.plot(kind="bar",ax=ax[i],
-                                        title=str(scenario), legend=False,
-                            color=[snakemake.config['plotting']['tech_colors'][i] for i in cost_learning.index])
-
-        costs_dea.T.plot(ax=ax[i], legend=False, ls="--",
-                  color=[snakemake.config['plotting']['tech_colors'][i] for i in cost_learning.index])
-
-
-
-        ax[i].set_xlabel("")
-
-        ax[i].set_ylim([0,cost_learning.sum().max()*1.1])
-
-        ax[i].grid(axis="y")
-
-    ax[1].set_ylabel("Investment costs [EUR/kW]")
-
-    handles,labels = ax[0].get_legend_handles_labels()
-
-    handles.reverse()
-    labels.reverse()
-
-    ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
+            dea_name = "DEA " + cost_learning.loc[[tech]].rename(pypsa_to_database).index
+            costs_dea.loc[dea_name].T.plot(ax=ax[i], legend=False, ls="--",
+                      color=[snakemake.config['plotting']['tech_colors'][tech]])
 
 
-    fig.savefig(snakemake.output.capital_costs_learning,
-                 bbox_inches="tight")
+
+            ax[i].set_xlabel("")
+            y_max = max(cost_learning.loc[tech].max(),
+                        costs_dea.loc[dea_name].max().max())
+            ax[i].set_ylim([0, y_max*1.1])
+
+            ax[i].grid(axis="y")
+
+        ax[1].set_ylabel("Investment costs [EUR/kW]")
+
+        handles,labels = ax[0].get_legend_handles_labels()
+
+        handles.reverse()
+        labels.reverse()
+
+        ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
+
+
+        fig.savefig(snakemake.output.capital_costs_learning[:-4] + tech + ".pdf",
+                     bbox_inches="tight")
 
 def learning_cost_vs_curve():
     # capital cost for learning technologies
@@ -598,14 +608,14 @@ def learning_cost_vs_curve():
 
 
         fig, ax = plt.subplots()
-        plt.title(scenario)
+        plt.title(scenario[-1])
 
         plt.step(points.xs("x_fit", level=1, axis=1),
-                  interpolated_costs, where="mid",
+                  interpolated_costs, where="pre",
                  lw=2, ls=":", color="green")
 
-        plt.vlines(points[scenario[-1], "x_fit"].values, ymin=y.min()/1e3,ymax=y.max()/1e3,
-                    linestyle="-", color="grey", alpha=0.2)
+        # plt.vlines(points[scenario[-1], "x_fit"].values, ymin=y.min()/1e3,ymax=y.max()/1e3,
+        #             linestyle="-", color="grey", alpha=0.2)
 
         (y/1e3).plot(ax=ax, lw=2, legend=False, color='#1f77b4')
 
@@ -627,7 +637,7 @@ def learning_cost_vs_curve():
         # tot2.plot(kind="scatter", x= 'global_cap', y="cum_cost", ax=ax2,
         #   marker="x",  s=100, color="orange", grid=True)
 
-        plt.legend(bbox_to_anchor=(1.2,1))
+        plt.legend(loc="upper center")
 
         fig.savefig(snakemake.output.learning_cost_vs_curve.replace("learning_cost.pdf", "") + "{}.pdf".format(scenario),
                  bbox_inches="tight")
@@ -678,6 +688,49 @@ def plot_capacities():
 
     fig.savefig(snakemake.output.capacities,
                  bbox_inches="tight")
+
+    # #####################
+    # learning carriers
+
+    learn_carrier = pd.read_csv(snakemake.input.learn_carriers,
+                                index_col=0, header=list(range(n_header))).index
+    for carrier in learn_carrier:
+
+        fig, ax = plt.subplots(len(capacities.stack().columns), 1,  sharex=True)
+        fig.suptitle(carrier, fontsize=16)
+        fig.set_size_inches((10,10))
+
+        for i, scenario in enumerate(capacities.stack().columns):
+
+            capacities.reindex(index=[rename_techs(carrier)])[scenario].T.plot(kind="area",ax=ax[i],
+                                            title=str(scenario), legend=False, grid=True,
+                                color=[snakemake.config['plotting']['tech_colors'][i] for i in [carrier]])
+
+
+
+
+            ax[i].set_xlabel("")
+
+            ax[i].set_ylim([0,capacities.reindex(index=[rename_techs(carrier)]).max().max()*1.1])
+            # ax[i].set_xlim(["2020", "2050"])
+
+            ax[i].grid(axis="y")
+
+        ax[1].set_ylabel("Installed capacities [GW]")
+
+
+
+        handles,labels = ax[0].get_legend_handles_labels()
+
+        handles.reverse()
+        labels.reverse()
+
+        ax[1].legend(handles,labels,ncol=1)
+
+        for i, scenario in enumerate(capacities.stack().columns):
+            ax[i].grid(axis="y")
+            ax[i].autoscale(enable=True, axis='x', tight=True)
+        plt.savefig("/home/ws/bw0928/Dokumente/learning_curve/results/{}/graphs/capacities_{}.pdf".format(snakemake.config["run"],carrier), bbox_inches="tight")
 #%%
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
@@ -685,7 +738,6 @@ if __name__ == "__main__":
         import os
         os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
         from _helpers import mock_snakemake
-        # snakemake = mock_snakemake('solve_network', lv='1.0', sector_opts='Co2L-2p24h-learnsolarp0',clusters='37')
         snakemake = mock_snakemake('plot_summary',
                                    sector_opts='Co2L-876h-learnsolarp0-learnonwindp10',
                                    clusters='37')

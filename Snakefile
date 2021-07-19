@@ -79,21 +79,41 @@ rule solve_network_single_ct:
     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
     script: "scripts/prepare_and_solve_learning.py"
 
-rule solve_sec_network:
+# rule solve_sec_network:
+#     input:
+#         network="results/" + "prenetworks/elec_s_EU.nc",
+#         config="results/"+ config['run'] + '/configs/config.yaml',
+#         global_capacity="data/global_capacities.csv",
+#         local_capacity="data/local_capacities.csv",
+#         costs="data/costs/",
+#         busmap_s="data/busmap_elec_s.csv",
+#         busmap="data/busmap_elec_s_37.csv",
+#         profile_offwind_ac="data/profile_offwind-ac.nc",
+#         profile_offwind_dc="data/profile_offwind-dc.nc",
+#         transport="data/transport/transport.csv",
+#         nodal_transport_data="data/transport/nodal_transport_data.csv",
+#         avail_profile="data/transport/avail_profile.csv",
+#         dsm_profile="data/transport/dsm_profile.csv",
+#     output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc"
+#     shadow: "shallow"
+#     log:
+#         solver="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_solver.log",
+#         python="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_python.log",
+#         memory="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory.log"
+#     benchmark: "results/"+ config['run'] + "/benchmarks/_network/elec_s_EU_{sector_opts}_sec"
+#     threads: 4
+#     resources: mem_mb=30000
+#     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
+#     script: "scripts/prepare_and_solve_learning_sec.py"
+
+rule solve_sec_network_years:
     input:
-        network="results/" + "prenetworks/elec_s_EU.nc",
+        network=expand("results" + "/prenetworks/elec_s_EU_{investment_periods}.nc", **config['scenario']),
         config="results/"+ config['run'] + '/configs/config.yaml',
         global_capacity="data/global_capacities.csv",
         local_capacity="data/local_capacities.csv",
         costs="data/costs/",
-        busmap_s="data/busmap_elec_s.csv",
-        busmap="data/busmap_elec_s_37.csv",
-        profile_offwind_ac="data/profile_offwind-ac.nc",
-        profile_offwind_dc="data/profile_offwind-dc.nc",
-        transport="data/transport/transport.csv",
-        nodal_transport_data="data/transport/nodal_transport_data.csv",
-        avail_profile="data/transport/avail_profile.csv",
-        dsm_profile="data/transport/dsm_profile.csv",
+        p_max_pu="data/generators_p_max_pu.csv",
     output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc"
     shadow: "shallow"
     log:
@@ -104,7 +124,7 @@ rule solve_sec_network:
     threads: 4
     resources: mem_mb=30000
     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
-    script: "scripts/prepare_and_solve_learning_sec.py"
+    script: "scripts/prepare_and_solve_learning_sec_years.py"
 
 # rule make_summary:
 #     input:

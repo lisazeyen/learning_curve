@@ -1,4 +1,4 @@
-run: "test"
+run: "typical_days"
 
 logging:
   level: INFO
@@ -7,9 +7,9 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73h-co2seq3, Co2L-73h-learnonwindp0-co2seq3, Co2L-73h-learnonwindp0-learnH2xelectrolysisp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq10, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq5,Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp0-co2seq2, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp10-co2seq3, Co2L-73h-learnsolarp0-learnbatteryp0-learnonwindp0-learnH2xelectrolysisp10-co2seq10]
+  sector_opts: [Co2L-4p24h-co2seq1, Co2L-4p24h-learnonwindp0-co2seq1, Co2L-4p24h-learnH2xelectrolysisp0-co2seq1, Co2L-4p24h-learnsolarp0-co2seq1, Co2L-4p24h-learnDACp0-co2seq1]
+  investment_periods: [2020, 2030, 2040, 2050]
 
-investment_periods: [2020, 2030, 2040, 2050]
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
@@ -28,9 +28,10 @@ learning_rates:
   H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 Electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 fuel cell: 0.16
+  H2 Fuel Cell: 0.16
   battery: 0.18  # DEA technology data for energy storage, p.178
   DAC: 0.10  # https://www.sciencedirect.com/science/article/pii/S0959652619307772
-  battery inverter: 0.19 # JRC "Li-ion batteries for mobility and stationary storage applications" p.69
+  battery charger: 0.19 # battery inverter JRC "Li-ion batteries for mobility and stationary storage applications" p.69
 
 temporal_aggregation:
   n_periods: 4
@@ -53,6 +54,7 @@ co2_budget:
   2p0 : 70 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
 
 sector:
+  # TRANSPORT ------------------------------------------------------------
   'bev_dsm' : True #turns on EV battery
   'bev_availability' : 0.5  #How many cars do smart charging
   'v2g' : True #allows feed-in to grid from EV battery
@@ -69,6 +71,28 @@ sector:
     2050: 0.85
   'transport_fuel_cell_efficiency': 0.5
   'transport_internal_combustion_efficiency': 0.3
+  shipping_average_efficiency: 0.4 #For conversion of fuel oil to propulsion in 2011
+  shipping_hydrogen_share: # 1 means all hydrogen FC
+    2020: 0
+    2025: 0
+    2030: 0.05
+    2035: 0.15
+    2040: 0.3
+    2045: 0.6
+    2050: 1
+    # HEAT --------------------------------------------------------------------
+  reduce_space_heat_exogenously: true  # reduces space heat demand by a given factor (applied before losses in DH)
+  # this can represent e.g. building renovation, building demolition, or if
+  # the factor is negative: increasing floor area, increased thermal comfort, population growth
+  reduce_space_heat_exogenously_factor: # per unit reduction in space heat demand
+  # the default factors are determined by the LTS scenario from http://tool.european-calculator.eu/app/buildings/building-types-area/?levers=1ddd4444421213bdbbbddd44444ffffff11f411111221111211l212221
+    2020: 0.10  # this results in a space heat demand reduction of 10%
+    2025: 0.09  # first heat demand increases compared to 2020 because of larger floor area per capita
+    2030: 0.09
+    2035: 0.11
+    2040: 0.16
+    2045: 0.21
+    2050: 0.29
 
 costs:
   update_costs: False
@@ -110,7 +134,7 @@ solving:
     FeasibilityTol: 1.e-5
     AggFill: 0
     PreDual: 0
-    # NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
+    NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.005    # 0.5% gap between (ObjBound-ObjVal)/ObjVal
     #Cuts: 2
     #ScaleFlag: 0
@@ -206,6 +230,7 @@ plotting:
     "DAC": "#1864ab"
     "Fischer-Tropsch" : "#44DD33"
     "battery storage" : "#b8ea04"
+    "battery charger" : "#e2f69a"
     "air heat pump" : "#76EE00"
     "ground heat pump" : "#40AA00"
     "resistive heater" : "pink"

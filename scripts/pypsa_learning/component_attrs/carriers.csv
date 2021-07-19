@@ -7,6 +7,6 @@ learning_rate,float,per unit,0,"Learning rate for a technology, capital cost red
 global_capacity,float,MW,0,"Globally installed capacity of a carrier, used to determine the learning curve of the technology",Input (optional)
 initial_cost,float,Eur/MW,0,"Only considered for technology learning, initial investment costs before technology learning",Input (optional)
 max_capacity,float,MW,0,"Only considered for technology learning, maximum installable capacity",Input (optional)
-global_factor,float,per unit,1,Defines if global or local technology learning is applied,Input (optional)
+global_factor,float,per unit,1,"Defines if global or local technology learning is applied, 1=local learning",Input (optional)
 bus,string,n/a,n/a,defines bus for technical limit constraint,Input (optional)
 max_growth,float,MW,inf,maximum new installed capacity per investment period,Input (optional)
