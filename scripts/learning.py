@@ -11,9 +11,6 @@ import pandas as pd
 import numpy as np
 import math
 
-import pypsa_learning as pypsa
-
-
 from pypsa_learning.pf import (get_switchable_as_dense as get_as_dense)
 from pypsa_learning.descriptors import (get_extendable_i, expand_series,
                                         nominal_attrs, get_active_assets)

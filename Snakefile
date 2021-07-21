@@ -114,6 +114,7 @@ rule solve_sec_network_years:
         local_capacity="data/local_capacities.csv",
         costs="data/costs/",
         p_max_pu="data/generators_p_max_pu.csv",
+        generators_costs="data/generators_costs.csv",
     output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc"
     shadow: "shallow"
     log:

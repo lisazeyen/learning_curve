@@ -225,13 +225,14 @@ def update_other_costs(n,costs, years):
     # electrolysis costs overwrite
     h2_elec_i = n.links[n.links.carrier=="H2 electrolysis"].index
     n.links.loc[h2_elec_i, "capital_cost"] = costs[years[0]].loc["electrolysis", "fixed"]
+
     # offshore costs
-    for wind_carrier in ["offwind-dc", "offwind-ac"]:
-        n.generators[n.generators.carrier==wind_carrier]["capital_cost"] = lookup_wind.loc[(wind_carrier, 2020),
-                                                                                           "capital_cost"]
+    # for wind_carrier in ["offwind-dc", "offwind-ac"]:
+    #     n.generators[n.generators.carrier==wind_carrier]["capital_cost"] = lookup_wind.loc[(wind_carrier, 2020),
+    #                                                                                        "capital_cost"]
 
 
-def prepare_data(gf_default=0.3):
+def prepare_data(representative_ct, gf_default=0.3):
     """Prepare data for multi-decade and technology learning.
 
     Parameters:
@@ -251,6 +252,7 @@ def prepare_data(gf_default=0.3):
     global_capacity.rename(index={"battery inverter": "battery charger"}, inplace=True)
     global_capacity.loc["H2 Fuel Cell"] = global_capacity.loc["H2 fuel cell"]
     local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
+    p_nom_res = local_capacity[local_capacity.alpha_2.isin(representative_ct)]
     if all(countries==["EU"]):
         local_capacity["alpha_2"] = "EU"
     else:
@@ -258,6 +260,11 @@ def prepare_data(gf_default=0.3):
     # data to adjust already installed capacity according to IRENA
     local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
     local_caps = local_caps.groupby(level=[0,1]).sum()
+    # for renewable
+    p_nom_res = p_nom_res.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
+    p_nom_res = p_nom_res.groupby(level=[0,1]).sum()['Electricity Installed Capacity (MW)']
+    p_nom_res.index = p_nom_res.swaplevel().index.map(" ".join)
+
     p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
             .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
     p_nom = p_nom[n.generators.build_year<=years[0]]
@@ -276,6 +283,8 @@ def prepare_data(gf_default=0.3):
     global_factor = (local_capacity.groupby(local_capacity.index).sum()
                      .div(global_capacity, axis=0).fillna(gf_default).iloc[:,0])
 
+    p_nom = pd.concat([p_nom_res, p_nom])
+
     return (countries, global_capacity, local_caps, p_nom, p_nom_max_limit,
             global_factor)
 
@@ -289,22 +298,26 @@ def update_network_p_nom(n, p_nom):
     """
     # overwrite already installed renewable capacities
     renewable = ['onwind 2020', 'offwind-dc 2020', 'solar 2020']
-    df = n.generators.loc[renewable]
-    df.index = df.index.map(df.carrier)
-    pnl = n.generators_t.p_max_pu[renewable].rename(columns=lambda x: n.generators.loc[x,"carrier"])
-    df["p_nom"] = p_nom.loc[renewable].astype(float)
+    for res in renewable:
+        n.generators.loc[renewable, "p_nom"] = p_nom.loc[renewable].astype(float)
+        n.generators.loc[renewable, "p_nom_extendable"] = False
+        n.generators.loc[renewable, "build_year"] = 2010
 
-    n.generators.loc[renewable, "p_nom"] = 0.
+        # n.generators.loc[df.index, "p_nom"] = 0.
+        # pnl = n.generators_t.p_max_pu[df.index].rename(columns=lambda x: x.replace(" 2020", ""))
+        # df.rename(index= lambda x: x.replace(" 2020", ""), inplace=True)
 
-    n.madd("Generator",
-           df.index,
-           bus=df.bus,
-           carrier=df.carrier,
-           p_nom_extendable=False,
-           marginal_cost=df.marginal_cost,
-           capital_cost=df.capital_cost,
-           efficiency=df.efficiency,
-           p_max_pu=pnl)
+        # df["p_nom"] = p_nom.reindex(df.index).fillna(0).astype(float)
+
+        # n.madd("Generator",
+        #        df.index,
+        #        bus=df.bus,
+        #        carrier=df.carrier,
+        #        p_nom_extendable=False,
+        #        marginal_cost=df.marginal_cost,
+        #        capital_cost=df.capital_cost,
+        #        efficiency=df.efficiency,
+        #        p_max_pu=pnl)
 
     # overwrite already installed conventional capacities
     conventional = ["nuclear 2020", "lignite 2020", "coal 2020"]
@@ -345,15 +358,15 @@ def set_scenario_opts(n, opts):
                     n.carriers.loc[tech, "initial_cost"] = n.df(c).loc[index, "capital_cost"].mean()
                 # TODO
                 if tech=="H2 electrolysis":
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 3e6
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 6e6
                 if tech=="H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech=="DAC":
-                    n.carriers.loc["DAC", "max_capacity"] = 1e5
+                    n.carriers.loc["DAC", "max_capacity"] = 3e5
                 if tech=="solar":
-                    n.carriers.loc["solar", "max_capacity"] = 1e7
+                    n.carriers.loc["solar", "max_capacity"] = 2e7
                 if tech=="onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 1e7
+                    n.carriers.loc["onwind", "max_capacity"] = 2e7
                 if tech=="battery":
                     n.carriers.loc["battery", "max_capacity"] *= 2
         if "co2seq" in o:
@@ -687,7 +700,7 @@ if 'snakemake' not in globals():
     os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
     from _helpers import mock_snakemake
     snakemake = mock_snakemake('solve_sec_network_years',
-                               sector_opts= '4p24h-learnH2xelectrolysisp10-learnH2xFuelxCellp10-learnDACp0-co2seq1',
+                               sector_opts= '4p24h-learnH2xelectrolysisp0-co2seq1',
                                clusters='37')
 
 # parameters
@@ -698,18 +711,51 @@ opts = snakemake.wildcards.sector_opts.split('-')
 
 n = concat_networks(override_component_attrs)
 
-# representative renewable for different region
-p_max_pu = pd.read_csv(snakemake.input.p_max_pu,
-                       index_col=0, header=[0,1], parse_dates=True)
-representative_ct = ['DE', 'DK', 'GB', 'IT','ES', 'PT', 'PL']
-for carrier in p_max_pu.columns.levels[0]:
-    df = n.generators[n.generators.carrier==carrier]
-
 # costs
 update = snakemake.config["costs"]["update_costs"]
 costs = prepare_costs_all_years(years, update)
 # prepare data
-countries, global_capacity, local_capacity, p_nom, p_nom_max_limit, global_factor = prepare_data()
+representative_ct = ['DE', 'DK', 'GB', 'IT','ES', 'PT', 'PL']
+representative_ct = ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
+       'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK',
+       'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
+countries, global_capacity, local_capacity, p_nom, p_nom_max_limit, global_factor = prepare_data(representative_ct)
+
+# representative renewable for different region
+p_max_pu = pd.read_csv(snakemake.input.p_max_pu,
+                       index_col=0, header=[0,1], parse_dates=True)
+static_df = pd.read_csv(snakemake.input.generators_costs,
+                        index_col=[0,1])
+for carrier in p_max_pu.columns.levels[0]:
+    if carrier=="ror": continue
+    df = n.generators[n.generators.carrier==carrier]
+    pnl = p_max_pu[carrier].reindex(columns=representative_ct).dropna(axis=1)
+    df_cts = pd.concat([df.rename(index=lambda x: ct + " " + x) for ct in pnl.columns])
+    df_cts["country"] = df_cts.index.str[:2]
+    pnl_cts = pd.concat([pnl.rename(columns=lambda x: x + " " + name)
+                     for name in df.index], axis=1).reindex(columns=df_cts.index)
+    attributes = ["capital_cost", "p_nom_max"]
+    reindex_df = df_cts.set_index(["carrier", "country"]).rename({"offwind":"offwind-dc"},level=0)
+    for attr in attributes:
+        replace = static_df.reindex(reindex_df.index)[attr]
+        replace.index = df_cts.index
+        df_cts[attr] = replace
+
+
+    n.madd("Generator",
+           df_cts.index,
+           bus=df_cts.bus,
+           carrier=carrier,
+           p_nom_extendable=df_cts.p_nom_extendable,
+           p_nom_max=df_cts.p_nom_max,
+           weight=df_cts.weight,
+           build_year=df_cts.build_year,
+           lifetime=df_cts.lifetime,
+           country=df_cts.country,
+           marginal_cost=df_cts.marginal_cost,
+           capital_cost=df_cts.capital_cost,
+           efficiency=df_cts.efficiency,
+           p_max_pu=pnl_cts)
 
 
 # update already installed capacities
@@ -802,12 +848,12 @@ for carrier in ["biogas", "solid biomass"]:
     n.stores.loc[store_i, "lifetime"] = 10.
 
 # (a) add CO2 Budget constraint ------------------------------------
-budget = snakemake.config["co2_budget"]["1p5"] * 1e9  # budget for + 1.5 Celsius for Europe
+budget = snakemake.config["co2_budget"]["2p0"] * 1e9  # budget for + 1.5 Celsius for Europe
 
 
 n.add("GlobalConstraint",
-      "CO2Budget",
-      type="Budget",
+      "Budget",
+      type="primary_energy",
       carrier_attribute="co2_emissions",
       sense="<=",
       constant=budget)
@@ -844,8 +890,13 @@ if snakemake.config["tech_limit"]:
 
 limit_res = ['offwind-ac', 'offwind-dc', 'onwind','solar']
 # TODO limit max growth per year
-n.carriers.loc[limit_res, "max_growth"] = 30 * 1e3
-n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 15 * 1e3
+n.carriers.loc[limit_res, "max_growth"] = 80 * 1e3
+n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 40 * 1e3
+
+# if "H2 electrolysis" not in n.carriers.index:
+#     n.add("Carrier",
+#           name="H2 electrolysis" )
+# n.carriers.loc["H2 electrolysis", "max_growth"] = 260 * 1e3
 #%%---------------------------------------------------------------------------
 if any(n.carriers.learning_rate!=0):
     def extra_functionality(n, snapshots):

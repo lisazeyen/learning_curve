@@ -1,4 +1,4 @@
-run: "typical_days"
+run: "multi_learning"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-4p24h-co2seq1, Co2L-4p24h-learnonwindp0-co2seq1, Co2L-4p24h-learnH2xelectrolysisp0-co2seq1, Co2L-4p24h-learnsolarp0-co2seq1, Co2L-4p24h-learnDACp0-co2seq1]
+  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnH2xFuelxCellp0-co2seq1,  Co2L-73sn-learnbatteryxchargerp0-learnbatteryp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq1, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-local-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -99,7 +99,7 @@ costs:
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016
-  social_discountrate: 0.02
+  social_discountrate: 0.0 #0.02
   USD2013_to_EUR2013: 0.7532 # [EUR/USD] ECB: https://www.ecb.europa.eu/stats/exchange/eurofxref/html/eurofxref-graph-usd.en.html
   marginal_cost:
     solar: 0.01
@@ -184,13 +184,13 @@ plotting:
     'solar' : "#f9d002"
     'solar PV' : "#f9d002"
     'solar rooftop' : "#fbe780"
-    'solar thermal' : '#ffef60'
+    'solar thermal' : '#eee172'
     'biomass' : '#0c6013'
     'solid biomass' : '#06540d'
     'biogas' : '#23932d'
     'waste' : '#68896b'
     'geothermal' : '#ba91b1'
-    "OCGT" : "#d35050"
+    "OCGT" : "#e0b487"
     "gas" : "#d9480f"
     "natural gas" : "#d35050"
     "CCGT" : "#b20101"
@@ -224,14 +224,14 @@ plotting:
     "DC link" : "#8a1caf"
     "CC" : "k"
     "gas boiler" : "#FF922B"
-    "SMR" : "#d6d6ba"
-    "SMR CC" : "#4F4F2F"
+    "SMR" : "#387181"
+    "SMR CC" : "#97c5d2"
     "CHP" : "r"
-    "DAC": "#1864ab"
+    "DAC": "#d8e9fa"
     "Fischer-Tropsch" : "#44DD33"
     "battery storage" : "#b8ea04"
     "battery charger" : "#e2f69a"
-    "air heat pump" : "#76EE00"
+    "air heat pump" : "#b1ff65"
     "ground heat pump" : "#40AA00"
     "resistive heater" : "pink"
     "hot water storage" : "#BBBBBB"
@@ -239,10 +239,10 @@ plotting:
     "methanation" : "#620035"
     "helmeth" : "#7D0552"
     "oil boiler" : "#B5A677"
-    "process emissions" : "#222222"
-    "process emissions CC" : "#ced4da"
+    "process emissions" : "#ced4da"
+    "process emissions CC" : "#bbc4b1"
     "solid biomass for industry" : "#62baa0"
-    "solid biomass for industry CC" : "#2d6655"
+    "solid biomass for industry CC" : "#98d2c1"
     "gas for industry" : "#ef5d5d"
     "gas for industry CC" : "#8e0e0e"
     "electricity distribution grid" : "#C8C8A9"

@@ -582,10 +582,11 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points,
     cap_upper = (x_ub.groupby(level=0, axis=1).max()
                  - x_lb.groupby(level=0, axis=1).min()).reindex(columns=learn_i).mul(global_factor)
     # define variable for new installed capacity per period
-    cap_per_period = define_variables(n, 0, cap_upper, c,
+    cap_per_period = define_variables(n, 0, np.inf, #cap_upper,
+                                      c,
                            "cap_per_period", axes=[investments, learn_i])
 
-    # cumulative capacity = initial capacity + sum_t (cap)
+    # cumulative capacity = initial capacity + sum_t (new installed cap)
     lhs = linexpr((1, cum_cap),
                   (-1/global_factor, cap_per_period))
     lhs.iloc[1:] += linexpr((-1, cum_cap.shift().dropna()))
@@ -693,7 +694,8 @@ def define_cost_per_period(n, points, investments, segments, learn_i):
                  - y_lb.groupby(level=0, axis=1).min()).mul(global_factor).reindex(learn_i,axis=1)
 
     # define variable for investment per period in technology ---------------
-    inv = define_variables(n, 0, inv_upper, c,
+    inv = define_variables(n, 0, np.inf, # inv_upper,
+                           c,
                            "inv_per_period", axes=[investments, learn_i])
 
     cum_cost = get_var(n, c, "cumulative_cost")

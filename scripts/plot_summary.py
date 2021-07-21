@@ -730,7 +730,7 @@ def plot_capacities():
         for i, scenario in enumerate(capacities.stack().columns):
             ax[i].grid(axis="y")
             ax[i].autoscale(enable=True, axis='x', tight=True)
-        plt.savefig("/home/ws/bw0928/Dokumente/learning_curve/results/{}/graphs/capacities_{}.pdf".format(snakemake.config["run"],carrier), bbox_inches="tight")
+        plt.savefig("/home/ws/bw0928/mnt/lisa/learning_curve/results/{}/graphs/capacities_{}.pdf".format(snakemake.config["run"],carrier), bbox_inches="tight")
 #%%
 if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
