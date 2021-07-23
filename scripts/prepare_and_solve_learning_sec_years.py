@@ -10,7 +10,6 @@ import pandas as pd
 import numpy as np
 from six import iteritems, string_types, iterkeys
 import re
-import xarray as xr
 
 import logging
 from vresutils.benchmark import memory_logger
@@ -18,8 +17,8 @@ from vresutils.costdata import annuity
 
 import pypsa_learning as pypsa
 from pypsa_learning.learning import add_learning
-from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
-from pypsa_learning.descriptors import nominal_attrs, get_extendable_i, expand_series
+from pypsa_learning.temporal_clustering import aggregate_snapshots
+from pypsa_learning.descriptors import nominal_attrs, get_extendable_i, get_active_assets, expand_series
 
 from pypsa_learning.linopt import get_var, linexpr, define_constraints
 from pypsa_learning.io import import_components_from_dataframe
@@ -200,9 +199,7 @@ def prepare_costs_all_years(years, update=False):
 
 
 def update_other_costs(n,costs, years):
-    """Update all costs according to technology data base."""
-    lookup_wind = n.generators.groupby([n.generators.carrier,
-                                        n.generators.build_year]).mean()
+    """Update all costs according to the first investment period."""
     for c in n.iterate_components(n.one_port_components|n.branch_components):
         df = c.df
         if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
@@ -226,13 +223,8 @@ def update_other_costs(n,costs, years):
     h2_elec_i = n.links[n.links.carrier=="H2 electrolysis"].index
     n.links.loc[h2_elec_i, "capital_cost"] = costs[years[0]].loc["electrolysis", "fixed"]
 
-    # offshore costs
-    # for wind_carrier in ["offwind-dc", "offwind-ac"]:
-    #     n.generators[n.generators.carrier==wind_carrier]["capital_cost"] = lookup_wind.loc[(wind_carrier, 2020),
-    #                                                                                        "capital_cost"]
 
-
-def prepare_data(representative_ct, gf_default=0.3):
+def prepare_data(gf_default=0.3):
     """Prepare data for multi-decade and technology learning.
 
     Parameters:
@@ -252,7 +244,7 @@ def prepare_data(representative_ct, gf_default=0.3):
     global_capacity.rename(index={"battery inverter": "battery charger"}, inplace=True)
     global_capacity.loc["H2 Fuel Cell"] = global_capacity.loc["H2 fuel cell"]
     local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
-    p_nom_res = local_capacity[local_capacity.alpha_2.isin(representative_ct)]
+
     if all(countries==["EU"]):
         local_capacity["alpha_2"] = "EU"
     else:
@@ -260,10 +252,6 @@ def prepare_data(representative_ct, gf_default=0.3):
     # data to adjust already installed capacity according to IRENA
     local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
     local_caps = local_caps.groupby(level=[0,1]).sum()
-    # for renewable
-    p_nom_res = p_nom_res.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
-    p_nom_res = p_nom_res.groupby(level=[0,1]).sum()['Electricity Installed Capacity (MW)']
-    p_nom_res.index = p_nom_res.swaplevel().index.map(" ".join)
 
     p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
             .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
@@ -283,10 +271,9 @@ def prepare_data(representative_ct, gf_default=0.3):
     global_factor = (local_capacity.groupby(local_capacity.index).sum()
                      .div(global_capacity, axis=0).fillna(gf_default).iloc[:,0])
 
-    p_nom = pd.concat([p_nom_res, p_nom])
-
     return (countries, global_capacity, local_caps, p_nom, p_nom_max_limit,
             global_factor)
+
 
 def update_network_p_nom(n, p_nom):
     """Prepare network for multi-decade.
@@ -294,7 +281,6 @@ def update_network_p_nom(n, p_nom):
     (1) Assign installed capacity align with IRENA data, drops old global
         constraints
     (2) drop old global constraints
-    (3) update the cost assumptions and efficiencies
     """
     # overwrite already installed renewable capacities
     renewable = ['onwind 2020', 'offwind-dc 2020', 'solar 2020']
@@ -340,6 +326,8 @@ def set_scenario_opts(n, opts):
                 learn_diff = float(o[len("learn"+tech):].replace("p",".").replace("m","-"))
                 learning_rate = snakemake.config["learning_rates"][tech] + learn_diff
                 factor = global_factor.loc[tech]
+                if "local" in opts:
+                    factor = 1.
                 logger.info("technology learning for {} with learning rate {}%".format(tech, learning_rate*100))
                 if tech not in n.carriers.index:
                     n.add("Carrier",
@@ -358,17 +346,16 @@ def set_scenario_opts(n, opts):
                     n.carriers.loc[tech, "initial_cost"] = n.df(c).loc[index, "capital_cost"].mean()
                 # TODO
                 if tech=="H2 electrolysis":
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 6e6
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 1.2e6/factor
                 if tech=="H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech=="DAC":
-                    n.carriers.loc["DAC", "max_capacity"] = 3e5
+                    n.carriers.loc["DAC", "max_capacity"] = 120e3/factor
                 if tech=="solar":
-                    n.carriers.loc["solar", "max_capacity"] = 2e7
+                    n.carriers.loc["solar", "max_capacity"] =  2.2e6/factor
                 if tech=="onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 2e7
-                if tech=="battery":
-                    n.carriers.loc["battery", "max_capacity"] *= 2
+                    n.carriers.loc["onwind", "max_capacity"] = 2.3e6/factor
+
         if "co2seq" in o:
             factor = float(o.replace("co2seq", ""))
             n.stores.loc["co2 stored 2020", "e_nom_max"] *= factor
@@ -379,6 +366,7 @@ def set_scenario_opts(n, opts):
         n.carriers.loc[learn_i, "global_factor"] = 1.
 
     return n
+
 
 def set_temporal_aggregation(n, opts):
     """Aggregate network temporally."""
@@ -416,7 +404,6 @@ def set_temporal_aggregation(n, opts):
     return n
 
 
-
 def set_multi_index(n, years, social_discountrate):
     """Set snapshots to pd.MultiImdex."""
     snapshots = pd.MultiIndex.from_product([years, n.snapshots])
@@ -429,7 +416,7 @@ def set_multi_index(n, years, social_discountrate):
 
 def phase_out(c, build_year, lifetime,
               conventionals = ["lignite", "coal", "oil", "nuclear", "CCGT"]):
-    """Define phase out time"""
+    """Define phase out time."""
     gens = n.df(c)[ n.df(c).carrier.isin(conventionals)].index
     n.df(c).loc[gens, "build_year"] = build_year
     n.df(c).loc[gens, "lifetime"] = lifetime
@@ -561,74 +548,6 @@ def add_battery_constraints(n):
     define_constraints(n, lhs, "=", 0, 'Link', 'charger_ratio')
 
 
-def add_chp_constraints(n):
-
-    electric_bool = (n.links.index.str.contains("urban central")
-                     & n.links.index.str.contains("CHP")
-                     & n.links.index.str.contains("electric"))
-    heat_bool = (n.links.index.str.contains("urban central")
-                 & n.links.index.str.contains("CHP")
-                 & n.links.index.str.contains("heat"))
-
-    electric = n.links.index[electric_bool]
-    heat = n.links.index[heat_bool]
-    electric_ext = n.links.index[electric_bool & n.links.p_nom_extendable]
-    heat_ext = n.links.index[heat_bool & n.links.p_nom_extendable]
-    electric_fix = n.links.index[electric_bool & ~n.links.p_nom_extendable]
-    heat_fix = n.links.index[heat_bool & ~n.links.p_nom_extendable]
-
-
-    if not electric_ext.empty:
-
-        link_p_nom = get_var(n, "Link", "p_nom")
-
-        #ratio of output heat to electricity set by p_nom_ratio
-        lhs = linexpr((n.links.loc[electric_ext,"efficiency"]
-                       *n.links.loc[electric_ext,'p_nom_ratio'],
-                       link_p_nom[electric_ext]),
-                      (-n.links.loc[heat_ext,"efficiency"].values,
-                       link_p_nom[heat_ext].values))
-        define_constraints(n, lhs, "=", 0, 'chplink', 'fix_p_nom_ratio')
-
-
-    if not electric.empty:
-
-        link_p = get_var(n, "Link", "p")
-
-        #backpressure
-        lhs = linexpr((n.links.loc[electric,'c_b'].values
-                       *n.links.loc[heat,"efficiency"],
-                       link_p[heat]),
-                      (-n.links.loc[electric,"efficiency"].values,
-                       link_p[electric].values))
-
-        define_constraints(n, lhs, "<=", 0, 'chplink', 'backpressure')
-
-
-    if not electric_ext.empty:
-
-        link_p_nom = get_var(n, "Link", "p_nom")
-        link_p = get_var(n, "Link", "p")
-
-        #top_iso_fuel_line for extendable
-        lhs = linexpr((1,link_p[heat_ext]),
-                      (1,link_p[electric_ext].values),
-                      (-1,link_p_nom[electric_ext].values))
-
-        define_constraints(n, lhs, "<=", 0, 'chplink', 'top_iso_fuel_line_ext')
-
-
-    if not electric_fix.empty:
-
-        link_p = get_var(n, "Link", "p")
-
-        #top_iso_fuel_line for fixed
-        lhs = linexpr((1,link_p[heat_fix]),
-                      (1,link_p[electric_fix].values))
-
-        define_constraints(n, lhs, "<=", n.links.loc[electric_fix,"p_nom"].values, 'chplink', 'top_iso_fuel_line_fix')
-
-
 def get_nodal_balance(carrier="gas"):
 
     bus_map = (n.buses.carrier == carrier)
@@ -694,6 +613,36 @@ def add_carbon_neutral_constraint(n, snapshots):
             define_constraints(n, lhs, "==", rhs, 'GlobalConstraint', 'Co2Neutral')
 
 
+def add_local_res_constraint(n,snapshots):
+
+    c, attr = 'Generator', 'p_nom'
+    res = ['offwind-ac', 'offwind-dc', 'onwind', 'solar', 'solar rooftop']
+    ext_i = n.df(c)[(n.df(c)["carrier"].isin(res))
+                    & (n.df(c)["country"] !="EU")
+                    & (n.df(c)["p_nom_extendable"])].index
+    time_valid = snapshots.levels[0]
+
+    active_i = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
+                          for inv_p in time_valid], axis=1).astype(int)
+
+    ext_and_active = active_i.T[active_i.index.intersection(ext_i)]
+
+    if ext_and_active.empty: return
+
+    cap_vars = get_var(n, c, attr)[ext_and_active.columns]
+
+    lhs = (linexpr((ext_and_active, cap_vars)).T
+           .groupby([n.df(c).carrier, n.df(c).country]).sum().T)
+
+    p_nom_max_w = n.df(c).p_nom_max.div(n.df(c).weight).loc[ext_and_active.columns]
+    p_nom_max_t = expand_series(p_nom_max_w, time_valid).T
+
+    rhs = (p_nom_max_t.mul(ext_and_active)
+           .groupby([n.df(c).carrier, n.df(c).country], axis=1)
+           .max())
+
+    define_constraints(n, lhs, "<=", rhs, 'GlobalConstraint', 'res_limit')
+
 #%%
 # for testing
 if 'snakemake' not in globals():
@@ -716,10 +665,10 @@ update = snakemake.config["costs"]["update_costs"]
 costs = prepare_costs_all_years(years, update)
 # prepare data
 representative_ct = ['DE', 'DK', 'GB', 'IT','ES', 'PT', 'PL']
-representative_ct = ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
-       'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK',
-       'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
-countries, global_capacity, local_capacity, p_nom, p_nom_max_limit, global_factor = prepare_data(representative_ct)
+# representative_ct = ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
+#        'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK',
+#        'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
+countries, global_capacity, local_capacity, p_nom, p_nom_max_limit, global_factor = prepare_data()
 
 # representative renewable for different region
 p_max_pu = pd.read_csv(snakemake.input.p_max_pu,
@@ -740,6 +689,9 @@ for carrier in p_max_pu.columns.levels[0]:
         replace = static_df.reindex(reindex_df.index)[attr]
         replace.index = df_cts.index
         df_cts[attr] = replace
+    # share of total European technical potential
+    if p_nom_max_limit.loc[carrier][0]!= np.inf:
+        df_cts["weight"] = df_cts[df_cts.build_year==years[0]].p_nom_max.sum() / p_nom_max_limit.loc[carrier][0]
 
 
     n.madd("Generator",
@@ -756,7 +708,6 @@ for carrier in p_max_pu.columns.levels[0]:
            capital_cost=df_cts.capital_cost,
            efficiency=df_cts.efficiency,
            p_max_pu=pnl_cts)
-
 
 # update already installed capacities
 update_network_p_nom(n, p_nom)
@@ -890,8 +841,12 @@ if snakemake.config["tech_limit"]:
 
 limit_res = ['offwind-ac', 'offwind-dc', 'onwind','solar']
 # TODO limit max growth per year
-n.carriers.loc[limit_res, "max_growth"] = 80 * 1e3
-n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 40 * 1e3
+# solar max grow so far 28 GW in Europe https://www.iea.org/reports/renewables-2020/solar-pv
+n.carriers.loc["solar", "max_growth"] = 40 * 1e3
+# onshore max grow so far 16 GW in Europe https://www.iea.org/reports/renewables-2020/wind
+n.carriers.loc["onwind", "max_growth"] = 30 * 1e3
+# offshore max grow so far 3.5 GW in Europe https://windeurope.org/about-wind/statistics/offshore/european-offshore-wind-industry-key-trends-statistics-2019/
+n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 6 * 1e3
 
 # if "H2 electrolysis" not in n.carriers.index:
 #     n.add("Carrier",
@@ -900,17 +855,17 @@ n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 40 * 1e3
 #%%---------------------------------------------------------------------------
 if any(n.carriers.learning_rate!=0):
     def extra_functionality(n, snapshots):
-        add_chp_constraints(n)
         add_battery_constraints(n)
         add_learning(n, snapshots)
         add_carbon_neutral_constraint(n, snapshots)
+        add_local_res_constraint(n,snapshots)
 
     skip_objective = True
 else:
     def extra_functionality(n, snapshots):
-        add_chp_constraints(n)
         add_battery_constraints(n)
         add_carbon_neutral_constraint(n, snapshots)
+        add_local_res_constraint(n,snapshots)
 
     skip_objective = False
 
