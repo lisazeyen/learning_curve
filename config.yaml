@@ -1,4 +1,4 @@
-run: "multi_learning"
+run: "p_nom_max_ct_limit"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnH2xFuelxCellp0-co2seq1,  Co2L-73sn-learnbatteryxchargerp0-learnbatteryp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq1, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-local-co2seq1]
+  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnH2xFuelxCellp0-co2seq1,  Co2L-73sn-learnbatteryxchargerp0-learnbatteryp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3,Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp0-co2seq3, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq1, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-local-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -99,7 +99,7 @@ costs:
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016
-  social_discountrate: 0.0 #0.02
+  social_discountrate: 0.001 #0.02
   USD2013_to_EUR2013: 0.7532 # [EUR/USD] ECB: https://www.ecb.europa.eu/stats/exchange/eurofxref/html/eurofxref-graph-usd.en.html
   marginal_cost:
     solar: 0.01
