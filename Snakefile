@@ -127,6 +127,29 @@ rule solve_sec_network_years:
     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
     script: "scripts/prepare_and_solve_learning_sec_years.py"
 
+rule prepare_perfect_foresight:
+    input:
+        network=expand("results/prenetworks/" + "elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_{investment_periods}.nc", **config['scenario']),
+        brownfield_network = lambda w: ("results/prenetworks-brownfield/" + "elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_{}.nc"
+                                        .format(str(config['scenario']["investment_periods"][0]))),
+        config="results/"+ config['run'] + '/configs/config.yaml',
+        global_capacity="data/global_capacities.csv",
+        local_capacity="data/local_capacities.csv",
+        costs="data/costs/",
+        p_max_pu="data/generators_p_max_pu.csv",
+        generators_costs="data/generators_costs.csv",
+    output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}_new.nc"
+    shadow: "shallow"
+    log:
+        solver="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_solver.log",
+        python="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_python.log",
+        memory="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory.log"
+    benchmark: "results/"+ config['run'] + "/benchmarks/_network/elec_s_EU_{sector_opts}_sec"
+    threads: 4
+    resources: mem_mb=30000
+    # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
+    script: "scripts/prepare_perfect_foresigth.py"
+
 # rule make_summary:
 #     input:
 #         networks="results/" + config['run'] + "/postnetworks/elec_s_{clusters}_lv{lv}_{sector_opts}.nc",
