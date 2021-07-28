@@ -616,6 +616,7 @@ def _import_from_importer(network, importer, basename, skip_time=False):
     df = importer.get_snapshots()
     # read in investment period weightings
     investment_periods = importer.get_investment_periods()
+
     if df is not None:
         # check if imported snapshots have MultiIndex
         if set(["investment_periods", "snapshots"]).issubset(df.columns):
@@ -824,7 +825,9 @@ def import_series_from_dataframe(network, dataframe, cls_name, attr):
     else:
         pnl[attr] = pnl[attr].reindex(columns=(pnl[attr].columns.union(columns)))
 
-    pnl[attr].loc[network.snapshots, columns] = dataframe.loc[network.snapshots, columns]
+    # pnl[attr].loc[network.snapshots, columns] = dataframe.loc[network.snapshots, columns]
+    dataframe = dataframe.reindex_like(pnl[attr])
+    pnl[attr] = dataframe
 
 
 
