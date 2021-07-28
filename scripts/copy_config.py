@@ -3,7 +3,8 @@ from shutil import copy
 
 files = ["config.yaml",
          "Snakefile",
-         "scripts/prepare_and_solve_learning_sec_years.py",
+         "scripts/prepare_perfect_foresight.py",
+         "scripts/set_opts_and_solve.py",
          ]
 
 for f in files:

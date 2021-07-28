@@ -1,0 +1,483 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jul 21 15:53:04 2021
+Prepare sector coupling network for perfect foresight optimisation
+
+@author: bw0928
+"""
+import pypsa_learning as pypsa
+import pandas as pd
+import numpy as np
+import logging
+
+from pypsa_learning.io import import_components_from_dataframe
+from six import iterkeys
+from pypsa_learning.descriptors import expand_series
+from vresutils.costdata import annuity
+import re
+
+
+logger = logging.getLogger(__name__)
+
+# TODO move override component to helpers
+override_component_attrs = pypsa.descriptors.Dict({k : v.copy() for k,v in pypsa.components.component_attrs.items()})
+override_component_attrs["Link"].loc["bus2"] = ["string",np.nan,np.nan,"2nd bus","Input (optional)"]
+override_component_attrs["Link"].loc["bus3"] = ["string",np.nan,np.nan,"3rd bus","Input (optional)"]
+override_component_attrs["Link"].loc["bus4"] = ["string",np.nan,np.nan,"4th bus","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency2"] = ["static or series","per unit",1.,"2nd bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency3"] = ["static or series","per unit",1.,"3rd bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["efficiency4"] = ["static or series","per unit",1.,"4th bus efficiency","Input (optional)"]
+override_component_attrs["Link"].loc["p2"] = ["series","MW",0.,"2nd bus output","Output"]
+override_component_attrs["Link"].loc["p3"] = ["series","MW",0.,"3rd bus output","Output"]
+override_component_attrs["Link"].loc["p4"] = ["series","MW",0.,"4th bus output","Output"]
+
+override_old = override_component_attrs.copy()
+override_old["Link"].loc["build_year"] = ["integer","year",np.nan,"build year","Input (optional)"]
+override_old["Link"].loc["lifetime"] = ["float","years",np.nan,"build year","Input (optional)"]
+override_old["Generator"].loc["build_year"] = ["integer","year",np.nan,"build year","Input (optional)"]
+override_old["Generator"].loc["lifetime"] = ["float","years",np.nan,"build year","Input (optional)"]
+override_old["Store"].loc["build_year"] = ["integer","year",np.nan,"build year","Input (optional)"]
+override_old["Store"].loc["lifetime"] = ["float","years",np.nan,"build year","Input (optional)"]
+
+#%%  MAPPING
+# maps pypsa name to technology data name
+pypsa_to_techbase = {'H2 electrolysis':"electrolysis",
+                     'H2 Electrolysis':"electrolysis",
+                     'H2 Fuel Cell': "fuel cell",
+                    'H2 fuel cell': "fuel cell",
+                    'battery charger':"battery inverter",
+                    # 'battery discharger':"battery inverter",
+                    "H2" : 'hydrogen storage underground',
+                    "battery": "battery storage",
+                    "offwind-ac": "offwind",
+                    "offwind-dc":"offwind",
+                    "solar rooftop": "solar-rooftop",
+                    "solar": "solar-utility",
+                    "DAC": "direct air capture"}
+
+# FUNCTIONS ----------------------------------------------------------------
+def concat_networks(years,
+                    with_time=True,
+                    snapshots=None, investment_periods=None):
+        """Concat given pypsa networks and adds build_year.
+
+        Returns
+        --------
+        n : pypsa.Network for the whole planning horizon
+
+        Parameters
+        ----------
+        with_time : boolean, default True
+            Copy snapshots and time-varying network.component_names_t data too.
+        snapshots : list or index slice
+            A list of snapshots to copy, must be a subset of
+            network.snapshots, defaults to network.snapshots
+
+        Examples
+        --------
+        >>> network_copy = network.copy()
+
+        """
+        # input paths of sector coupling networks
+        network_paths = ([snakemake.input.brownfield_network] +
+                         snakemake.input.network[1:])
+        # final concatenated network
+        n = pypsa.Network(override_component_attrs=override_component_attrs)
+
+        pattern=re.compile(r'-\d\d\d\d')
+
+        # helper functions ---------------------------------------------------
+        def rename_df(df, new_i, axis=0):
+            return df.rename(lambda x: x + "-" + str(year) if x in new_i else x,
+                      axis=axis)
+
+        def get_already_build(df, pattern=re.compile(r'-\d\d\d\d')):
+            # assets which are build earlier
+            early_build_i = df[df.rename(lambda x: True if pattern.search(x)!=None
+                                         else False).index].index
+            # assets which will be newly build
+            new_i = df.index.difference(early_build_i)
+
+            return early_build_i, new_i
+
+        def get_missing(df, n, c):
+            """Get in network n missing assets of df for component c.
+
+            Input:
+                df: pandas DataFrame, static values of pypsa components
+                n : pypsa Network to which new assets should be added
+                c : string, pypsa component.list_name (e.g. "generators")
+            Return:
+                pd.DataFrame with static values of missing assets
+            """
+            df_final = getattr(n, c)
+            missing_i = df.index.difference(df_final.index)
+            return df.loc[missing_i]
+
+        # --------------------------------------------------------------------
+
+        # iterate over single year networks and concat to perfect foresight network
+        for i, network_path in enumerate(network_paths):
+            year = years[i]
+            network = pypsa.Network(network_path,
+                                    override_component_attrs=override_old)
+
+            # TODO can be removed once lifetime and build_year defaults are aligned with new pypsa
+            for c in ["Generator", "Store", "Link"]:
+                network.df(c)["build_year"].fillna(year,inplace=True)
+                network.df(c)["lifetime"].fillna(np.inf,inplace=True)
+
+            # static ----------------------------------
+            # (1) add buses and carriers
+            for component in network.iterate_components(["Bus", "Carrier"]):
+                df_year = component.df
+                # get missing assets
+                missing = get_missing(df_year, n, component.list_name)
+                import_components_from_dataframe(n, missing, component.name)
+            # (2) add generators, links, stores and loads
+            for component in network.iterate_components(['Generator', 'Link', 'Store', 'Load']):
+
+                df_year = component.df.copy()
+                # assets which are build earlier
+                early_build_i, new_i = get_already_build(df_year)
+                # set build year of assets
+                df_year["build_year"] = df_year.rename(lambda x: int(pattern.search(x).group().replace("-","")) if
+                                       x in early_build_i else year).index
+                df_year = rename_df(df_year, new_i, axis=0)
+
+                missing = get_missing(df_year, n, component.list_name)
+
+                import_components_from_dataframe(n, missing, component.name)
+
+            # time variant --------------------------------------------------
+            if with_time:
+                if snapshots is None:
+                    snapshots = network.snapshots
+                n.set_snapshots(snapshots)
+                investment_periods = network.investment_period_weightings.index
+                for component in network.iterate_components():
+                    pnl = getattr(n, component.list_name+"_t")
+                    for k in iterkeys(component.pnl):
+                        if component.name in ['Generator', 'Link', 'Store', 'Load']:
+                            df_year = component.df
+                            # assets which are build earlier
+                            early_build_i, new_i = get_already_build(df_year)
+                            pnl_year = component.pnl[k].loc[snapshots].copy()
+                            pnl_year = rename_df(pnl_year, new_i, axis=1)
+
+                            if component.name=="Load" and k=="p_set":
+                                static_load = network.loads.loc[network.loads.p_set!=0]
+                                static_load = rename_df(static_load, new_i, axis=0)
+                                static_load_t = expand_series(static_load.p_set, network.snapshots).T
+                                pnl_year = pd.concat([pnl_year, static_load_t], axis=1)
+                            pnl[k] = pd.concat([pnl[k], pnl_year], axis=1)
+                        elif component.name in ["Bus", "Carrier"]:
+                            df_year = component.df
+                            missing = get_missing(df_year, n, component.list_name)
+                            cols = missing.index.intersection(component.pnl[k].columns)
+                            pnl_year = component.pnl[k].loc[snapshots].copy()
+                            pnl[k] = pd.concat([pnl[k], pnl_year[cols]], axis=1)
+                        else:
+                            pnl[k] = component.pnl[k]
+
+                n.snapshot_weightings = network.snapshot_weightings.loc[snapshots].copy()
+                n.investment_period_weightings = network.investment_period_weightings.loc[investment_periods].copy()
+            else:
+                investment_periods = network.investment_period_weightings.index
+                n.snapshot_weightings = network.snapshot_weightings.copy()
+                n.investment_period_weightings = network.investment_period_weightings.loc[investment_periods].copy()
+
+        n.loads["p_set"] = 0
+        # drop old global constraints
+        n.global_constraints.drop(n.global_constraints.index, inplace=True)
+
+        return n
+
+
+def prepare_costs(cost_file, discount_rate, lifetime):
+    """Prepare cost data."""
+    #set all asset costs and other parameters
+    costs = pd.read_csv(cost_file,index_col=list(range(2))).sort_index()
+
+    #correct units to MW and EUR
+    costs.loc[costs.unit.str.contains("/kW"),"value"]*=1e3
+
+    #min_count=1 is important to generate NaNs which are then filled by fillna
+    costs = costs.loc[:, "value"].unstack(level=1).groupby("technology").sum(min_count=1)
+    costs = costs.fillna({"CO2 intensity" : 0,
+                          "FOM" : 0,
+                          "VOM" : 0,
+                          "discount rate" : discount_rate,
+                          "efficiency" : 1,
+                          "fuel" : 0,
+                          "investment" : 0,
+                          "lifetime" : lifetime
+    })
+
+    costs["fixed"] = [(annuity(v["lifetime"],v["discount rate"])+v["FOM"]/100.)*v["investment"] for i,v in costs.iterrows()]
+    return costs
+
+
+def prepare_costs_all_years(years):
+    """Prepare cost data for multiple years."""
+    update = snakemake.config["costs"]["update_costs"]
+    all_costs = {}
+
+    for year in years:
+        all_costs[year] = prepare_costs(snakemake.input.costs + "/costs_{}.csv"
+                                        .format(year),
+                              snakemake.config['costs']['discountrate'],
+                              snakemake.config['costs']['lifetime'])
+
+    if not update:
+        for year in years:
+            all_costs[year] = all_costs[years[0]]
+
+    return all_costs
+
+
+def update_costs(n,costs, years):
+    """Update all costs according to costs in the first investment period."""
+
+    def get_first_attr(df, attr):
+        map_dict = (df[attr].groupby([df.carrier, df.build_year]).first()
+                    .sort_index().groupby(level=0).first())
+        return df.carrier.map(map_dict)
+
+    for c in n.iterate_components(n.one_port_components|n.branch_components):
+        df = c.df
+        if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
+
+        # update costs and efficiencies
+        attrs = ["capital_cost", "marginal_cost", "efficiency",
+                 "efficiency2", "efficiency3", "efficiency4"]
+        for attr in attrs:
+            if attr not in c.df.columns: continue
+            c.df[attr] = get_first_attr(c.df, attr)
+
+        # update lifetime according to tech data base
+        c.df["lifetime"] = (c.df.carrier.replace(pypsa_to_techbase)
+                            .map(costs[years[0]]["lifetime"]).fillna(c.df.lifetime))
+
+
+    # electrolysis costs overwrite - TODO check why different
+    h2_elec_i = n.links[n.links.carrier=="H2 Electrolysis"].index
+    n.links.loc[h2_elec_i, "capital_cost"] = costs[years[0]].loc["electrolysis", "fixed"]
+
+
+def update_capacities(n):
+    """Update already installed capacities of powerplants.
+
+    The update is based on IRENA data [1] for renewables (including nuclear)
+    and beyond-coal [2] for coal. This data is only country resolved. The
+    capacities are updated because of larger RES capacities and lower conventional
+    capacities compared to the power plant matching data.
+    Capacities are distributed within a country weighted by capacities from
+    power plant matching.
+
+
+    [1] IRENA report
+    Renewable Capacity Statistics (2020)
+    https://irena.org/publications/2020/Mar/Renewable-Capacity-Statistics-2020
+
+    [2] beyond coal
+    https://beyond-coal.eu/wp-content/uploads/2021/05/2021-04-20_Europe_Beyond_Coal-European_Coal_Database_hcnn.xlsx
+    sheet country (April 2021)
+    """
+    # considered countries
+    countries = n.buses.country.unique()
+    # add country to low voltage level
+    bus_low_i = n.buses[n.buses.carrier=="low voltage"].index
+    n.buses.loc[bus_low_i, "country"] = n.buses.loc[bus_low_i].index.str[:2]
+    n.generators["country"] = n.generators.bus.map(n.buses.country)
+
+    res = ['nuclear', 'offwind-dc', 'onwind', 'solar']
+    res_i = n.generators[n.generators.carrier.isin(res)].index
+    # weight for share of already existing capacity
+    weight = (n.generators.p_nom /
+              n.generators.p_nom
+              .groupby([n.generators.carrier, n.generators.country])
+              .transform("sum")).fillna(0)
+
+    # installed renewable capacities according to IRENA
+    local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
+    local_capacity = local_capacity[local_capacity.alpha_2.isin(countries)]
+    local_caps = local_capacity.rename(index={"offwind": "offwind-dc"}).set_index('alpha_2', append=True)
+    local_caps = local_caps.groupby(level=[0,1]).sum()
+
+    p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
+            .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
+    n.generators.loc[res_i, "p_nom"] = p_nom.mul(weight).fillna(0).loc[res_i]
+
+    # Links -------------------------------------------------
+    # nuclear
+    links_i = n.links.loc[n.links.carrier=="nuclear"].index
+    n.links.loc[links_i, "country"] = n.links.bus1.map(n.buses.country)
+    p_nom = (local_caps.reindex(n.links.set_index(["carrier", "country"]).index)
+            .set_index(n.links.index)['Electricity Installed Capacity (MW)'])
+
+    weight = (n.links.p_nom /
+              n.links.p_nom
+              .groupby([n.links.carrier, n.links.country])
+              .transform("sum")).fillna(0)
+    n.links.loc[links_i, "p_nom"] = (p_nom.mul(weight) / n.links.efficiency).loc[links_i]
+
+    # coal
+    # conventional capacities from other sources -> TODO move to script of local capacities
+    p_nom.loc["lignite"] = 49760
+    p_nom.loc["coal"] = 76644  # hard coal
+
+    weight = (n.links.p_nom /
+              n.links.p_nom
+              .groupby(n.links.carrier)
+              .transform("sum")).fillna(0)
+
+    conventional = ["lignite", "coal"]
+    links_i = n.links.loc[n.links.carrier.isin(conventional)].index
+    n.links.loc[links_i, "p_nom"] = (n.links.carrier.map(p_nom) * weight/
+                                     n.links.efficiency).loc[links_i]
+    n.links.loc[links_i, "p_nom_extendable"] = False
+
+
+def get_social_discount(t, r=0.01):
+    """Calculate for a given time t the social discount."""
+    return (1/(1+r)**t)
+
+
+def get_investment_weighting(energy_weighting, r=0.01):
+    """Define cost weighting.
+
+    Returns cost weightings depending on the the energy_weighting (pd.Series)
+    and the social discountrate r
+    """
+    end = energy_weighting.cumsum()
+    start = energy_weighting.cumsum().shift().fillna(0)
+    return pd.concat([start,end], axis=1).apply(lambda x: sum([get_social_discount(t,r)
+                                                               for t in range(int(x[0]), int(x[1]))]),
+                                                axis=1)
+
+
+def set_multi_index(n, years, social_discountrate):
+    """Set snapshots to pd.MultiImdex."""
+    loads_t = (n.loads_t.p_set
+               .groupby([n.loads.carrier, n.loads.bus, n.loads.build_year],
+                        axis=1).sum()
+               .stack().swaplevel().sort_index().fillna(0))
+    helper = n.loads.reset_index()
+    load_df_i = helper.groupby([helper.carrier, helper.bus]).first()["name"]
+    loads_t.columns = loads_t.columns.map(load_df_i)
+    # loads_t.rename(columns=lambda x: x.replace("-2020", ""), inplace=True)
+    loads_t.index.rename(['investment_period', 'snapshot'], inplace=True)
+    load_df = n.loads.loc[load_df_i]
+    load_df.rename(index=lambda x: x.replace("-2020", ""), inplace=True)
+    loads_t.rename(columns=lambda x: x.replace("-2020", ""), inplace=True)
+
+    n.mremove("Load", n.loads.index)
+
+    snapshots = pd.MultiIndex.from_product([years, n.snapshots])
+    n.set_snapshots(snapshots)
+
+    import_components_from_dataframe(n, load_df, "Load")
+    n.loads_t.p_set = loads_t
+    # set investment_weighting
+    n.investment_period_weightings.loc[:, "time_weightings"] = n.investment_period_weightings.index.to_series().diff().shift(-1).fillna(10).values
+    n.investment_period_weightings.loc[:, "objective_weightings"] = get_investment_weighting(n.investment_period_weightings["time_weightings"], social_discountrate)
+
+
+def set_fixed_assets(c, fixed_carrier, overwrite_lifetime=True):
+    """Reduce number of assets for a given component c and adjust lifetime.
+
+    Input:
+        c                 : pypsa.Component (e.g. "Generator")
+        fixed_carrier     : list of carriers (e.g. ["coal", "lignite"])
+        overwrite_lifetime: Bool. If True. lifetimes of first year are set to
+                            infinity
+
+    """
+    fix = n.df(c)[n.df(c).carrier.isin(fixed_carrier)]
+    build_first = fix[fix.build_year<=years[0]]
+
+    to_drop = fix.index.difference(build_first.index)
+    for asset in to_drop:
+        n.remove(c, asset)
+
+    if overwrite_lifetime:
+        build_in_year = build_first[build_first.build_year==years[0]].index
+        n.df(c).loc[build_in_year, "lifetime"] = np.inf
+
+
+def set_assets_without_multiinvestment():
+    """Reduce number of assets which do not neeed multiinvestment."""
+    # generators ----------------
+    conventionals = ['coal', 'gas', 'lignite', 'oil', 'ror', 'uranium']
+    set_fixed_assets("Generator", conventionals)
+
+    # links ---------------------
+    links_fixed = ['CCGT',
+           'biogas to gas',
+           'co2 vent', 'coal', 'electricity distribution grid',
+           'gas for industry', 'gas for industry CC',
+           'lignite', 'DC',
+           'nuclear', 'oil', 'process emissions', 'process emissions CC',
+           'residential rural water tanks charger',
+           'residential rural water tanks discharger',
+           'residential urban decentral water tanks charger',
+           'residential urban decentral water tanks discharger',
+           'services rural water tanks charger',
+           'services rural water tanks discharger',
+           'services urban decentral water tanks charger',
+           'services urban decentral water tanks discharger',
+           'solid biomass for industry', 'solid biomass for industry CC',
+           'urban central water tanks charger',
+           'urban central water tanks discharger']
+    set_fixed_assets("Link", links_fixed)
+
+    # stores --------------------------------------------------------
+    stores_fixed = ['co2', 'co2 stored', 'coal', 'gas', 'lignite', 'oil',
+                    'uranium', 'H2 Store']
+    set_fixed_assets("Store", stores_fixed)
+# %%
+if __name__ == "__main__":
+    if "snakemake" not in globals():
+        import os
+        os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
+        from _helpers import mock_snakemake
+        snakemake = mock_snakemake(
+            "prepare_perfect_foresight",
+            sector_opts="73n-learnH2xelectrolysisp0-co2seq1",
+            clusters="37",
+        )
+
+
+    # parameters -----------------------------------------------------------
+    years = snakemake.config["scenario"]["investment_periods"]
+    social_discountrate = snakemake.config["costs"]["social_discountrate"]
+
+    # concat prenetworks of planning horizon to single network ------------
+    n = concat_networks(years)
+
+    # costs ----------------------------------------------------------------
+    costs = prepare_costs_all_years(years)
+    update_costs(n, costs, years)
+
+    # adjust already installed capacities to latest IRENA report -----------
+    update_capacities(n)
+
+    # set snapshots MultiIndex and investment weightings -------------------
+    set_multi_index(n, years, social_discountrate)
+
+    # set assets which only need single investment -------------------------
+    set_assets_without_multiinvestment()
+
+    # co2 store assumptions
+    co2_i = n.stores[n.stores.carrier.isin(["co2", "co2 stored"])].index
+    n.stores.loc[co2_i, "e_period"] = False
+    # increase biomass potentials
+    store_i = n.stores[n.stores.carrier.isin(["biogas", "solid biomass"])].index
+    time_weightings = n.stores.loc[store_i, "build_year"].map(n.investment_period_weightings["time_weightings"])
+    n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
+    n.stores.loc[store_i, "lifetime"] = 10.
+
+    # export network
+    n.export_to_netcdf(snakemake.output[0])

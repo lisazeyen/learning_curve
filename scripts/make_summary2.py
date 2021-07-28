@@ -626,7 +626,8 @@ def calculate_co2_emissions(n, label, df):
         df.loc[emitted_grouped.index,label] = emitted_grouped.values
 
     if any(n.stores.carrier=="co2"):
-        df[label] = n.stores_t.e.groupby(level=0).last()["co2 2020"]
+        co2_i = n.stores[n.stores.carrier=="co2"].index
+        df[label] = n.stores_t.e.groupby(level=0).last()[co2_i].iloc[:,0]
 
 
     return df

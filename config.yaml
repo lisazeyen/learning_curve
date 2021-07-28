@@ -1,4 +1,4 @@
-run: "p_nom_max_ct_limit"
+run: "higher_growth_no_social"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnH2xFuelxCellp0-co2seq1,  Co2L-73sn-learnbatteryxchargerp0-learnbatteryp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3,Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp0-co2seq3, Co2L-73sn-learnH2xelectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq1, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xelectrolysisp0-local-co2seq1]
+  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3,Co2L-73sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp0-co2seq3, Co2L-73sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq1, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-local-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -99,7 +99,7 @@ costs:
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016
-  social_discountrate: 0.001 #0.02
+  social_discountrate: 0.0 #0.02
   USD2013_to_EUR2013: 0.7532 # [EUR/USD] ECB: https://www.ecb.europa.eu/stats/exchange/eurofxref/html/eurofxref-graph-usd.en.html
   marginal_cost:
     solar: 0.01
@@ -136,10 +136,11 @@ solving:
     PreDual: 0
     NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.005    # 0.5% gap between (ObjBound-ObjVal)/ObjVal
+    MIPFocus: 3
     #Cuts: 2
     #ScaleFlag: 0
     # Heuristics: 0
-    VarBranch: 3   # Mattson p.36 strong branching improved performance
+    # VarBranch: 3   # Mattson p.36 strong branching improved performance
     GURO_PAR_BARDENSETHRESH: 200
 
 plotting:
@@ -201,6 +202,7 @@ plotting:
     "oil" : "#262626"
     "H2" : "#ea048a"
     "H2 electrolysis" : "indigo"
+    "H2 Electrolysis" : "indigo"
     "H2 fuel cell" : "thistle"
     "H2 Fuel Cell" : "thistle"
     "load" : "teal"
@@ -217,6 +219,7 @@ plotting:
     "AC-AC" : "#70af1d"
     "AC line" : "#70af1d"
     "AC": "silver"
+    "H2 pipeline": "silver"
     "links" : "#8a1caf"
     "HVDC links" : "#8a1caf"
     "DC-DC" : "#8a1caf"
