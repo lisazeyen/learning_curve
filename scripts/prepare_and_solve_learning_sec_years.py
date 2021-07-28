@@ -352,7 +352,7 @@ def set_scenario_opts(n, opts):
                 if tech=="DAC":
                     n.carriers.loc["DAC", "max_capacity"] = 120e3/factor
                 if tech=="solar":
-                    n.carriers.loc["solar", "max_capacity"] =  2.2e6/factor
+                    n.carriers.loc["solar", "max_capacity"] =  3e6/factor
                 if tech=="onwind":
                     n.carriers.loc["onwind", "max_capacity"] = 2.3e6/factor
 
@@ -842,9 +842,9 @@ if snakemake.config["tech_limit"]:
 limit_res = ['offwind-ac', 'offwind-dc', 'onwind','solar']
 # TODO limit max growth per year
 # solar max grow so far 28 GW in Europe https://www.iea.org/reports/renewables-2020/solar-pv
-n.carriers.loc["solar", "max_growth"] = 40 * 1e3
+n.carriers.loc["solar", "max_growth"] = 70 * 1e3
 # onshore max grow so far 16 GW in Europe https://www.iea.org/reports/renewables-2020/wind
-n.carriers.loc["onwind", "max_growth"] = 30 * 1e3
+n.carriers.loc["onwind", "max_growth"] = 50 * 1e3
 # offshore max grow so far 3.5 GW in Europe https://windeurope.org/about-wind/statistics/offshore/european-offshore-wind-industry-key-trends-statistics-2019/
 n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 6 * 1e3
 
