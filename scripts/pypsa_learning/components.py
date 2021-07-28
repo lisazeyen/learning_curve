@@ -722,6 +722,38 @@ class Network(Basic):
 
 
 
+    def mremove(self, class_name, names):
+        """
+        Removes multiple components from the network.
+        Removes them from component DataFrames.
+        Parameters
+        ----------
+        class_name : string
+            Component class name
+        name : list-like
+            Component names
+        Examples
+        --------
+        >>> network.mremove("Line", ["line x", "line y"])
+        """
+
+        if class_name not in self.components:
+            logger.error("Component class {} not found".format(class_name))
+            return None
+
+        if not isinstance(names, pd.Index):
+            names = pd.Index(names)
+
+        cls_df = self.df(class_name)
+
+        cls_df.drop(names, inplace=True)
+
+        pnl = self.pnl(class_name)
+
+        for df in pnl.values():
+            df.drop(df.columns.intersection(names), axis=1, inplace=True)
+
+
     def madd(self, class_name, names, suffix='', **kwargs):
         """
         Add multiple components to the network, along with their attributes.
