@@ -200,7 +200,7 @@ def plot_costs():
 
         ax[i].grid(axis="y")
 
-    ax[2].set_ylabel("System Cost [EUR billion per year]")
+    ax[1].set_ylabel("System Cost [EUR billion per year]")
 
 
 
