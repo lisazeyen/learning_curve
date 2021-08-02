@@ -122,9 +122,10 @@ def concat_networks(years,
             year = years[i]
             network = pypsa.Network(network_path,
                                     override_component_attrs=override_old)
+            network.lines["carrier"] = "AC"
 
             # TODO can be removed once lifetime and build_year defaults are aligned with new pypsa
-            for c in ["Generator", "Store", "Link"]:
+            for c in ["Generator", "Store", "Link", "Line"]:
                 network.df(c)["build_year"].fillna(year,inplace=True)
                 network.df(c)["lifetime"].fillna(np.inf,inplace=True)
 
@@ -136,7 +137,7 @@ def concat_networks(years,
                 missing = get_missing(df_year, n, component.list_name)
                 import_components_from_dataframe(n, missing, component.name)
             # (2) add generators, links, stores and loads
-            for component in network.iterate_components(['Generator', 'Link', 'Store', 'Load']):
+            for component in network.iterate_components(['Generator', 'Link', 'Store', 'Load', "Line"]):
 
                 df_year = component.df.copy()
                 # assets which are build earlier
@@ -159,7 +160,7 @@ def concat_networks(years,
                 for component in network.iterate_components():
                     pnl = getattr(n, component.list_name+"_t")
                     for k in iterkeys(component.pnl):
-                        if component.name in ['Generator', 'Link', 'Store', 'Load']:
+                        if component.name in ['Generator', 'Link', 'Store', 'Load', "Line"]:
                             df_year = component.df
                             # assets which are build earlier
                             early_build_i, new_i = get_already_build(df_year)
@@ -433,6 +434,9 @@ def set_assets_without_multiinvestment():
            'urban central water tanks discharger']
     set_fixed_assets("Link", links_fixed)
 
+    # lines --------------------------------------------------------
+    set_fixed_assets("Line", ["AC"])
+
     # stores --------------------------------------------------------
     stores_fixed = ['co2', 'co2 stored', 'coal', 'gas', 'lignite', 'oil',
                     'uranium', 'H2 Store']
@@ -476,8 +480,14 @@ if __name__ == "__main__":
     # increase biomass potentials
     store_i = n.stores[n.stores.carrier.isin(["biogas", "solid biomass"])].index
     time_weightings = n.stores.loc[store_i, "build_year"].map(n.investment_period_weightings["time_weightings"])
-    n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
+    # n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
     n.stores.loc[store_i, "lifetime"] = 10.
 
+    # add hydrogen boilers
+    df = n.links[n.links.carrier.str.contains("gas boiler") & (n.links.build_year>=years[0])].copy()
+    df["bus0"] = df.index.str[:5] + " H2"
+    df.index = df.index.str.replace("gas boiler", "H2 boiler")
+    df["carrier"] = df.carrier.str.replace("gas boiler", "H2 boiler")
+    import_components_from_dataframe(n, df, "Link")
     # export network
     n.export_to_netcdf(snakemake.output[0])
