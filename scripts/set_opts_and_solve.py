@@ -126,7 +126,120 @@ def cluster_network(n, years):
 
     # ---------------------------------------------------------------------
     # add representative generators for some countries and remove other res
-    representative_ct = ['DE', 'DK', 'GB', 'IT','ES', 'PT', 'PL']
+    representative_ct = ['DE', 'GR', 'GB', 'IT','ES', 'PT', 'IE']
+
+    logger.info("Take typical timeseries for renewable generators from the "
+                "following representative countries {}".format(representative_ct))
+    split_carriers = ['offwind-ac', 'onwind', 'residential rural solar thermal',
+       'residential urban decentral solar thermal',
+       'services rural solar thermal',
+       'services urban decentral solar thermal', 'solar rooftop', 'solar',
+       'urban central solar thermal', 'offwind', 'offwind-dc']
+    gens_i = n.generators[n.generators.carrier.isin(split_carriers) &
+                         (n.generators.country.isin(representative_ct))].index
+    split_df = n.generators.loc[gens_i]
+    to_drop = m.generators[m.generators.carrier.isin(split_carriers)]
+    # scale up p_nom and p_nom_max
+    for attr in ["p_nom", "p_nom_max"]:
+        attr_total = n.generators.groupby(["carrier", "build_year"]).sum()[attr]
+        attr_cts = split_df.groupby(["carrier", "build_year"]).sum()[attr]
+        weight = attr_total.loc[attr_cts.index]/attr_cts
+        default = n.components["Generator"]["attrs"]["default"].loc[attr]
+        weight_series = pd.Series(split_df.set_index(["carrier", "build_year"])
+                                       .index.map(weight),
+                                       index=split_df.index).loc[split_df.index].fillna(default)
+        split_df[attr] = split_df[attr].mul(weight_series).fillna(default)
+
+    split_df["bus"] = split_df.bus.map(n.buses.carrier)
+
+    m.mremove("Generator", to_drop.index)
+    import_components_from_dataframe(m, split_df, "Generator")
+
+    m.generators_t.p_max_pu[split_df.index] = n.generators_t.p_max_pu[split_df.index]
+
+    return m
+
+
+def cluster_network_to_cts(n, years):
+    """Cluster network n to network m with representative countries."""
+    cluster_regions = {"UK"}
+    countries = ["GB", "DE", "FR", "ES", "DK", "IT", "NO", "CH"]
+    logger.info("Cluster network spatially to one representative node.")
+    assign_location(n)
+    # clustered network m
+    m = pypsa.Network(override_component_attrs=override_component_attrs)
+    # set snapshots
+    m.set_snapshots(n.snapshots)
+    m.snapshot_weightings = n.snapshot_weightings.copy()
+    m.investment_period_weightings = n.investment_period_weightings.copy()
+
+    # catch all remaining attributes of network
+    for attr in ["name", "srid"]:
+        setattr(m,attr,getattr(n,attr))
+
+    other_comps = sorted(n.all_components - {"Bus","Carrier"} - {"Line"})
+    # overwrite static component attributes
+    for component in n.iterate_components(["Bus", "Carrier"] + other_comps):
+        df = component.df
+        default = n.components[component.name]["attrs"]["default"]
+        for col in df.columns.intersection(default.index):
+            df[col].fillna(default.loc[col], inplace=True)
+        if hasattr(df, "country"):
+            keys = df.columns.intersection(aggregate_dict.keys())
+            agg = dict(zip(df.columns.difference(keys), ["first"]*len(df.columns.difference(keys))))
+            for key in keys:
+                agg[key] = aggregate_dict[key]
+            if hasattr(df, "build_year"):
+                df = df.groupby(["carrier", "build_year"]).agg(agg)
+                df.index = pd.Index([f'{i}-{int(j)}' for i, j in df.index])
+            else:
+                df = df.groupby("carrier").agg(agg)
+            # rename location
+            df["country"] = "EU"
+            df["location"] = "EU"
+            # df["carrier"] = df.index
+            # rename buses
+            df.loc[:,df.columns.str.contains("bus")] = (df.loc[:,df.columns.str.contains("bus")]
+                                                       .apply(lambda x: x.map(n.buses.carrier)))
+        #drop the standard types to avoid them being read in twice
+        if component.name in n.standard_type_components:
+            df = component.df.drop(m.components[component.name]["standard_types"].index)
+
+        import_components_from_dataframe(m, df, component.name)
+
+    # time varying data
+    for component in n.iterate_components():
+        pnl = getattr(m, component.list_name+"_t")
+        df = component.df
+        if not hasattr(df, "carrier"): continue
+        keys = pd.Index(component.pnl.keys()).intersection(aggregate_dict.keys())
+        agg = dict(zip(pd.Index(component.pnl.keys()).difference(aggregate_dict.keys()),
+                       ["first"]*len(pd.Index(component.pnl.keys()).difference(aggregate_dict.keys()))))
+        for key in keys:
+            agg[key] = aggregate_dict[key]
+
+        for k in component.pnl.keys():
+            if hasattr(df, "build_year"):
+                pnl[k] = component.pnl[k].groupby([df.carrier, df.build_year],axis=1).agg(agg[k])
+                pnl[k].columns = pd.Index([f'{i}-{int(j)}' for i, j in pnl[k].columns])
+            else:
+                pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k])
+            pnl[k].fillna(n.components[component.name]["attrs"].loc[k, "default"], inplace=True)
+
+    # drop not needed components --------------------------------------------
+    to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
+    to_drop = m.links[m.links.carrier.isin(to_drop)].index
+    m.mremove("Link", to_drop)
+    # TODO
+    dac_i =  m.links[m.links.carrier=="DAC"].index
+    m.links.loc[dac_i, "bus3"] = 'services urban decentral heat'
+    # drop old global constraints
+    m.global_constraints.drop(m.global_constraints.index, inplace=True)
+
+    # ---------------------------------------------------------------------
+    # add representative generators for some countries and remove other res
+    representative_ct = ['DE', 'GR', 'GB', 'IT','ES', 'PT', 'IE']
+
     logger.info("Take typical timeseries for renewable generators from the "
                 "following representative countries {}".format(representative_ct))
     split_carriers = ['offwind-ac', 'onwind', 'residential rural solar thermal',
@@ -165,6 +278,11 @@ def assign_location(n):
                                         else "EU").index
     for c in n.one_port_components:
         n.df(c)["country"] = n.df(c).bus.map(n.buses.country)
+    for c in n.branch_components:
+        n.df(c)["country"] = n.df(c).bus0.map(n.buses.country)
+        eu_i = n.df(c)["country"]=="EU"
+        n.df(c).loc[eu_i, "country"] = n.df(c).loc[eu_i, "bus1"].map(n.buses.country)
+
 
 
 def prepare_data(gf_default=0.3):
@@ -262,6 +380,13 @@ def set_scenario_opts(n, opts):
     if "local" in opts:
         learn_i = n.carriers[n.carriers.learning_rate!=0].index
         n.carriers.loc[learn_i, "global_factor"] = 1.
+
+    if "autonomy" in opts:
+        logger.info("remove AC or DC connection between countries")
+        remove = n.links[n.links.carrier=="DC"].index
+        n.mremove("Link", remove)
+        remove = n.lines.index
+        n.mremove("Line", remove)
 
     return n
 
@@ -415,6 +540,7 @@ def add_carbon_neutral_constraint(n, snapshots):
 def add_local_res_constraint(n,snapshots):
     c, attr = 'Generator', 'p_nom'
     res = ['offwind-ac', 'offwind-dc', 'onwind', 'solar', 'solar rooftop']
+    n.df(c)["country"] = n.df(c).rename(lambda x: x[:2] if x[:2].isupper() else "EU").index
     ext_i = n.df(c)[(n.df(c)["carrier"].isin(res))
                     & (n.df(c)["country"] !="EU")
                     & (n.df(c)["p_nom_extendable"])].index
@@ -441,6 +567,22 @@ def add_local_res_constraint(n,snapshots):
 
     define_constraints(n, lhs, "<=", rhs, 'GlobalConstraint', 'res_limit')
 
+
+def add_capacity_constraint(n, snapshots):
+    """Additional constraint for overall installed capacity to speed up optimisation."""
+    c, attr = 'Generator', 'p_nom'
+    res = ['offwind-ac', 'offwind-dc', 'onwind', 'solar', 'solar rooftop']
+    ext_i = n.df(c)[(n.df(c)["carrier"].isin(res))
+                    & (n.df(c)["p_nom_extendable"])].index
+
+    cap_vars = get_var(n, c, attr)[ext_i]
+
+    lhs = linexpr((1, cap_vars)).groupby(n.df(c).carrier).sum().reindex(index=res)
+
+    rhs = pd.Series([140e3, 200e3, 900e3, 700e3, 400e3], index=res)
+
+    define_constraints(n, lhs, ">=", rhs, 'GlobalConstraint', 'min_cap')
+
 # --------------------------------------------------------------------
 def prepare_network(n, solve_opts=None):
     """Add solving options to the network before calling the lopf.
@@ -460,6 +602,7 @@ def prepare_network(n, solve_opts=None):
             add_learning(n, snapshots)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
+            add_capacity_constraint(n, snapshots)
 
         skip_objective = True
     else:
@@ -467,6 +610,7 @@ def prepare_network(n, solve_opts=None):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
+            add_capacity_constraint(n, snapshots)
 
         skip_objective = False
 
@@ -526,7 +670,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="146sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp0-co2seq3",
+            sector_opts="146sn-autonomy",
             clusters="37",
         )
 
@@ -538,7 +682,8 @@ if __name__ == "__main__":
                       override_component_attrs=override_component_attrs)
 
     # cluster network spatially to one node
-    n = cluster_network(n, years)
+    if snakemake.config["one_node"]:
+        n = cluster_network(n, years)
     # prepare data
     global_capacity, p_nom_max_limit, global_factor = prepare_data()
     # set scenario options
@@ -561,7 +706,7 @@ if __name__ == "__main__":
 
         extra_functionality, skip_objective, typical_period, solver_options, n = prepare_network(n)
         solver_options["threads"] = 8
-        solver_options["MIPFocus"] = 1
+
         n.lopf(pyomo=False, solver_name="gurobi", skip_objective=skip_objective,
                multi_investment_periods=True, solver_options=solver_options,
                solver_logfile=snakemake.log.solver,
