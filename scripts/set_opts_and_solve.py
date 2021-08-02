@@ -160,11 +160,11 @@ def cluster_network(n, years):
     return m
 
 
-def cluster_network_to_cts(n, years):
+def select_cts(n, years):
     """Cluster network n to network m with representative countries."""
-    cluster_regions = {"UK"}
+    cluster_regions = {"GB":"UK"}
     countries = ["GB", "DE", "FR", "ES", "DK", "IT", "NO", "CH"]
-    logger.info("Cluster network spatially to one representative node.")
+    logger.info("Consider only the following countries {}.".format(countries))
     assign_location(n)
     # clustered network m
     m = pypsa.Network(override_component_attrs=override_component_attrs)
@@ -177,7 +177,7 @@ def cluster_network_to_cts(n, years):
     for attr in ["name", "srid"]:
         setattr(m,attr,getattr(n,attr))
 
-    other_comps = sorted(n.all_components - {"Bus","Carrier"} - {"Line"})
+    other_comps = sorted(n.all_components - {"Bus","Carrier"})
     # overwrite static component attributes
     for component in n.iterate_components(["Bus", "Carrier"] + other_comps):
         df = component.df
@@ -189,18 +189,9 @@ def cluster_network_to_cts(n, years):
             agg = dict(zip(df.columns.difference(keys), ["first"]*len(df.columns.difference(keys))))
             for key in keys:
                 agg[key] = aggregate_dict[key]
-            if hasattr(df, "build_year"):
-                df = df.groupby(["carrier", "build_year"]).agg(agg)
-                df.index = pd.Index([f'{i}-{int(j)}' for i, j in df.index])
-            else:
-                df = df.groupby("carrier").agg(agg)
-            # rename location
-            df["country"] = "EU"
-            df["location"] = "EU"
-            # df["carrier"] = df.index
-            # rename buses
-            df.loc[:,df.columns.str.contains("bus")] = (df.loc[:,df.columns.str.contains("bus")]
-                                                       .apply(lambda x: x.map(n.buses.carrier)))
+            df = df[df.country.isin(countries + ["EU"])]
+        if hasattr(df, "bus1"):
+            df = df[df.bus1.isin(m.buses.index)]
         #drop the standard types to avoid them being read in twice
         if component.name in n.standard_type_components:
             df = component.df.drop(m.components[component.name]["standard_types"].index)
@@ -210,24 +201,14 @@ def cluster_network_to_cts(n, years):
     # time varying data
     for component in n.iterate_components():
         pnl = getattr(m, component.list_name+"_t")
-        df = component.df
-        if not hasattr(df, "carrier"): continue
-        keys = pd.Index(component.pnl.keys()).intersection(aggregate_dict.keys())
-        agg = dict(zip(pd.Index(component.pnl.keys()).difference(aggregate_dict.keys()),
-                       ["first"]*len(pd.Index(component.pnl.keys()).difference(aggregate_dict.keys()))))
-        for key in keys:
-            agg[key] = aggregate_dict[key]
+        df = m.df(component.name)
+        if not hasattr(df, "country"): continue
 
         for k in component.pnl.keys():
-            if hasattr(df, "build_year"):
-                pnl[k] = component.pnl[k].groupby([df.carrier, df.build_year],axis=1).agg(agg[k])
-                pnl[k].columns = pd.Index([f'{i}-{int(j)}' for i, j in pnl[k].columns])
-            else:
-                pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k])
-            pnl[k].fillna(n.components[component.name]["attrs"].loc[k, "default"], inplace=True)
+            pnl[k] = component.pnl[k].reindex(columns=df.index).dropna(axis=1)
 
     # drop not needed components --------------------------------------------
-    to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
+    to_drop = ["H2 pipeline retrofitted"]
     to_drop = m.links[m.links.carrier.isin(to_drop)].index
     m.mremove("Link", to_drop)
     # TODO
@@ -235,39 +216,6 @@ def cluster_network_to_cts(n, years):
     m.links.loc[dac_i, "bus3"] = 'services urban decentral heat'
     # drop old global constraints
     m.global_constraints.drop(m.global_constraints.index, inplace=True)
-
-    # ---------------------------------------------------------------------
-    # add representative generators for some countries and remove other res
-    representative_ct = ['DE', 'GR', 'GB', 'IT','ES', 'PT', 'IE']
-
-    logger.info("Take typical timeseries for renewable generators from the "
-                "following representative countries {}".format(representative_ct))
-    split_carriers = ['offwind-ac', 'onwind', 'residential rural solar thermal',
-       'residential urban decentral solar thermal',
-       'services rural solar thermal',
-       'services urban decentral solar thermal', 'solar rooftop', 'solar',
-       'urban central solar thermal', 'offwind', 'offwind-dc']
-    gens_i = n.generators[n.generators.carrier.isin(split_carriers) &
-                         (n.generators.country.isin(representative_ct))].index
-    split_df = n.generators.loc[gens_i]
-    to_drop = m.generators[m.generators.carrier.isin(split_carriers)]
-    # scale up p_nom and p_nom_max
-    for attr in ["p_nom", "p_nom_max"]:
-        attr_total = n.generators.groupby(["carrier", "build_year"]).sum()[attr]
-        attr_cts = split_df.groupby(["carrier", "build_year"]).sum()[attr]
-        weight = attr_total.loc[attr_cts.index]/attr_cts
-        default = n.components["Generator"]["attrs"]["default"].loc[attr]
-        weight_series = pd.Series(split_df.set_index(["carrier", "build_year"])
-                                       .index.map(weight),
-                                       index=split_df.index).loc[split_df.index].fillna(default)
-        split_df[attr] = split_df[attr].mul(weight_series).fillna(default)
-
-    split_df["bus"] = split_df.bus.map(n.buses.carrier)
-
-    m.mremove("Generator", to_drop.index)
-    import_components_from_dataframe(m, split_df, "Generator")
-
-    m.generators_t.p_max_pu[split_df.index] = n.generators_t.p_max_pu[split_df.index]
 
     return m
 
@@ -494,11 +442,11 @@ def set_max_growth(n):
     """Limit build rate of renewables."""
     logger.info("set maximum growth rate of renewables.")
     # solar max grow so far 28 GW in Europe https://www.iea.org/reports/renewables-2020/solar-pv
-    n.carriers.loc["solar", "max_growth"] = 70 * 1e3
+    n.carriers.loc["solar", "max_growth"] = 90 * 1e3#70 * 1e3
     # onshore max grow so far 16 GW in Europe https://www.iea.org/reports/renewables-2020/wind
-    n.carriers.loc["onwind", "max_growth"] = 40 * 1e3
+    n.carriers.loc["onwind", "max_growth"] = 60 * 1e3 # 40 * 1e3
     # offshore max grow so far 3.5 GW in Europe https://windeurope.org/about-wind/statistics/offshore/european-offshore-wind-industry-key-trends-statistics-2019/
-    n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 8.75 * 1e3
+    n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 15 * 1e3# 8.75 * 1e3
 
     return n
 
@@ -684,6 +632,9 @@ if __name__ == "__main__":
     # cluster network spatially to one node
     if snakemake.config["one_node"]:
         n = cluster_network(n, years)
+    # consider only some countries
+    if snakemake.config["select_cts"]:
+        n = select_cts(n, years)
     # prepare data
     global_capacity, p_nom_max_limit, global_factor = prepare_data()
     # set scenario options
