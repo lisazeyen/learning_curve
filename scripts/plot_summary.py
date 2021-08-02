@@ -186,31 +186,32 @@ def plot_costs():
                 transparent=True, bbox_inches="tight")
 
     # PLOT 2 ##############################################################
-    fig, ax = plt.subplots(len(df.stack().columns), 1,  sharex=True)
-    fig.set_size_inches((10,20))
-    for i, scenario in enumerate(df.stack().columns):
+    if len(df.stack().columns)>1:
+        fig, ax = plt.subplots(len(df.stack().columns), 1,  sharex=True)
+        fig.set_size_inches((10,20))
+        for i, scenario in enumerate(df.stack().columns):
 
-        df.loc[new_index, scenario].T.plot(kind="bar",ax=ax[i], stacked=True,
-                                           title=str(scenario), legend=False,
-                            color=[snakemake.config['plotting']['tech_colors'][i] for i in new_index])
-
-
-        ax[i].set_xlabel("")
-
-        ax[i].set_ylim([0,df.sum().max()*1.1])
-
-        ax[i].grid(axis="y")
-
-    ax[1].set_ylabel("System Cost [EUR billion per year]")
+            df.loc[new_index, scenario].T.plot(kind="bar",ax=ax[i], stacked=True,
+                                               title=str(scenario), legend=False,
+                                color=[snakemake.config['plotting']['tech_colors'][i] for i in new_index])
 
 
+            ax[i].set_xlabel("")
 
-    handles,labels = ax[0].get_legend_handles_labels()
+            ax[i].set_ylim([0,df.sum().max()*1.1])
 
-    handles.reverse()
-    labels.reverse()
+            ax[i].grid(axis="y")
 
-    ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
+        ax[0].set_ylabel("System Cost [EUR billion per year]")
+
+
+
+        handles,labels = ax[0].get_legend_handles_labels()
+
+        handles.reverse()
+        labels.reverse()
+
+        ax[1].legend(handles,labels,ncol=1,bbox_to_anchor=(1,1))
 
 
     fig.savefig(snakemake.output.costs2,
