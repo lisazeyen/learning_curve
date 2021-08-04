@@ -34,6 +34,9 @@ override_component_attrs["Link"].loc["p2"] = ["series","MW",0.,"2nd bus output",
 override_component_attrs["Link"].loc["p3"] = ["series","MW",0.,"3rd bus output","Output"]
 override_component_attrs["Link"].loc["p4"] = ["series","MW",0.,"4th bus output","Output"]
 
+import os
+os.environ['NUMEXPR_MAX_THREADS'] = str(snakemake.threads)
+
 #%% FUNCTIONS ---------------------------------------------------------------
 aggregate_dict = {"p_nom": "sum",
                   "p_nom_max": "sum",
@@ -163,7 +166,7 @@ def cluster_network(n, years):
 def select_cts(n, years):
     """Cluster network n to network m with representative countries."""
     cluster_regions = {"GB":"UK"}
-    countries = ["GB", "DE", "FR", "ES", "DK", "IT", "NO", "CH"]
+    countries = ["DE", "FR"] #, "GB", "ES", "DK", "IT", "NO", "CH"]
     logger.info("Consider only the following countries {}.".format(countries))
     assign_location(n)
     # clustered network m
@@ -211,9 +214,13 @@ def select_cts(n, years):
     to_drop = ["H2 pipeline retrofitted"]
     to_drop = m.links[m.links.carrier.isin(to_drop)].index
     m.mremove("Link", to_drop)
-    # TODO
+    # TODO DAC --------------------------------------------
     dac_i =  m.links[m.links.carrier=="DAC"].index
-    m.links.loc[dac_i, "bus3"] = 'services urban decentral heat'
+    remove = m.links.loc[dac_i][~m.links.loc[dac_i, "bus3"].isin(m.buses.index)].index
+    m.mremove("Link", remove)
+    dac_i =  m.links[m.links.carrier=="DAC"].index
+    m.links.loc[dac_i, "bus3"] = (m.links.loc[dac_i, "bus3"].str
+                                  .replace("urban central heat", "services urban decentral heat"))
     # drop old global constraints
     m.global_constraints.drop(m.global_constraints.index, inplace=True)
 
@@ -222,7 +229,7 @@ def select_cts(n, years):
 
 def assign_location(n):
     """Assign locaion to buses, one port components."""
-    n.buses["country"] = n.buses.rename(index= lambda x: x[:2] if x[:2].isupper()
+    n.buses["country"] = n.buses.rename(index= lambda x: x[:2] if (x[:2].isupper() and x not in ["AC", "H2"])
                                         else "EU").index
     for c in n.one_port_components:
         n.df(c)["country"] = n.df(c).bus.map(n.buses.country)
@@ -318,7 +325,7 @@ def set_scenario_opts(n, opts):
                 if tech=="solar":
                     n.carriers.loc["solar", "max_capacity"] =  3e6/factor
                 if tech=="onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 2.3e6/factor
+                    n.carriers.loc["onwind", "max_capacity"] = 3e6/factor
 
         if "co2seq" in o:
             factor = float(o.replace("co2seq", ""))
@@ -455,7 +462,7 @@ def set_max_growth(n):
 def add_battery_constraints(n):
     chargers = n.links.index[n.links.carrier.str.contains("battery charger") & n.links.p_nom_extendable]
     dischargers = chargers.str.replace("charger","discharger")
-
+    if chargers.empty: return
     link_p_nom = get_var(n, "Link", "p_nom")
 
     lhs = linexpr((1,link_p_nom[chargers]),
@@ -550,7 +557,7 @@ def prepare_network(n, solve_opts=None):
             add_learning(n, snapshots)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
-            add_capacity_constraint(n, snapshots)
+            # add_capacity_constraint(n, snapshots)
 
         skip_objective = True
     else:
@@ -558,7 +565,7 @@ def prepare_network(n, solve_opts=None):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
-            add_capacity_constraint(n, snapshots)
+            # add_capacity_constraint(n, snapshots)
 
         skip_objective = False
 
@@ -618,7 +625,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="146sn-autonomy",
+            sector_opts="146sn",
             clusters="37",
         )
 
@@ -646,7 +653,8 @@ if __name__ == "__main__":
     n = set_carbon_constraints(n)
 
     # set max growth for renewables
-    n = set_max_growth(n)
+    if snakemake.config["limit_growth"]:
+        n = set_max_growth(n)
 
     # solve network
     logging.basicConfig(filename=snakemake.log.python,
@@ -656,7 +664,7 @@ if __name__ == "__main__":
     with memory_logger(filename=getattr(snakemake.log, 'memory', None), interval=30.) as mem:
 
         extra_functionality, skip_objective, typical_period, solver_options, n = prepare_network(n)
-        solver_options["threads"] = 8
+        # solver_options["threads"] = 8
 
         n.lopf(pyomo=False, solver_name="gurobi", skip_objective=skip_objective,
                multi_investment_periods=True, solver_options=solver_options,
