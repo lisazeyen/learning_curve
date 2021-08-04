@@ -1,4 +1,4 @@
-run: "new_representative_cts"
+run: "one_EU_node_no_limit"
 
 logging:
   level: INFO
@@ -7,14 +7,15 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp10-co2seq3,Co2L-73sn-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnDACp0-co2seq3, Co2L-73sn-learnsolarp0-co2seq1, Co2L-73sn-learnonwindp0-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-local-co2seq1]
+  sector_opts: [Co2L-73sn-co2seq1, Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-learnbatteryp0-learnbatteryxchargerp0-local, Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnbatteryp0-learnbatteryxchargerp0-learnsolarp0-learnonwindp0-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
-one_node: False
-select_cts: True
+one_node: True
+select_cts: False
+limit_growth: False
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc
@@ -203,6 +204,7 @@ plotting:
     "lignite" : "#9e5a01"
     "oil" : "#262626"
     "H2" : "#ea048a"
+    "H2 boiler" : "#fd7bc7"
     "H2 electrolysis" : "indigo"
     "H2 Electrolysis" : "indigo"
     "H2 fuel cell" : "thistle"
