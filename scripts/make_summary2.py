@@ -398,7 +398,9 @@ def calculate_supply_energy(n,label,supply_energy):
             else:
                 weightings = n.snapshot_weightings.store_weightings
 
-            s = c.pnl.p[items].multiply(weightings,axis=0).groupby(level=0).sum().multiply(c.df.loc[items,'sign']).groupby(c.df.loc[items,'carrier'], axis=1).sum().T
+            s = (c.pnl.p[items].multiply(weightings,axis=0).groupby(level=0).sum()
+                 .multiply(c.df.loc[items,'sign'])
+                 .groupby(c.df.loc[items,'carrier'], axis=1).sum().T)
             s = pd.concat([s], keys=[c.list_name])
             s = pd.concat([s], keys=[i])
 
