@@ -5,6 +5,10 @@
 import pandas as pd
 from pathlib import Path
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 
 def configure_logging(snakemake, skip_handlers=False):
     """
@@ -127,32 +131,32 @@ def load_network_for_plots(fn, tech_costs, config, combine_hydro_ps=True):
 
 def aggregate_p_nom(n):
     return pd.concat([
-        n.generators.groupby("carrier").p_nom_opt.sum(),
-        n.storage_units.groupby("carrier").p_nom_opt.sum(),
-        n.links.groupby("carrier").p_nom_opt.sum(),
-        n.loads_t.p.groupby(n.loads.carrier,axis=1).sum().mean()
+        n.generators.groupby("carrier").p_nom_opt.sum(**agg_group_kwargs),
+        n.storage_units.groupby("carrier").p_nom_opt.sum(**agg_group_kwargs),
+        n.links.groupby("carrier").p_nom_opt.sum(**agg_group_kwargs),
+        n.loads_t.p.groupby(n.loads.carrier,axis=1).sum(**agg_group_kwargs).mean()
     ])
 
 def aggregate_p(n):
     return pd.concat([
-        n.generators_t.p.sum().groupby(n.generators.carrier).sum(),
-        n.storage_units_t.p.sum().groupby(n.storage_units.carrier).sum(),
-        n.stores_t.p.sum().groupby(n.stores.carrier).sum(),
-        -n.loads_t.p.sum().groupby(n.loads.carrier).sum()
+        n.generators_t.p.sum().groupby(n.generators.carrier).sum(**agg_group_kwargs),
+        n.storage_units_t.p.sum().groupby(n.storage_units.carrier).sum(**agg_group_kwargs),
+        n.stores_t.p.sum().groupby(n.stores.carrier).sum(**agg_group_kwargs),
+        -n.loads_t.p.sum().groupby(n.loads.carrier).sum()**agg_group_kwargs
     ])
 
 def aggregate_e_nom(n):
     return pd.concat([
-        (n.storage_units["p_nom_opt"]*n.storage_units["max_hours"]).groupby(n.storage_units["carrier"]).sum(),
-        n.stores["e_nom_opt"].groupby(n.stores.carrier).sum()
+        (n.storage_units["p_nom_opt"]*n.storage_units["max_hours"]).groupby(n.storage_units["carrier"]).sum(**agg_group_kwargs),
+        n.stores["e_nom_opt"].groupby(n.stores.carrier).sum(**agg_group_kwargs)
     ])
 
 def aggregate_p_curtailed(n):
     return pd.concat([
         ((n.generators_t.p_max_pu.sum().multiply(n.generators.p_nom_opt) - n.generators_t.p.sum())
-         .groupby(n.generators.carrier).sum()),
+         .groupby(n.generators.carrier).sum(**agg_group_kwargs)),
         ((n.storage_units_t.inflow.sum() - n.storage_units_t.p.sum())
-         .groupby(n.storage_units.carrier).sum())
+         .groupby(n.storage_units.carrier).sum(**agg_group_kwargs))
     ])
 
 def aggregate_costs(n, flatten=False, opts=None, existing_only=False):
@@ -172,12 +176,12 @@ def aggregate_costs(n, flatten=False, opts=None, existing_only=False):
     ):
         if c.df.empty: continue
         if not existing_only: p_nom += "_opt"
-        costs[(c.list_name, 'capital')] = (c.df[p_nom] * c.df.capital_cost).groupby(c.df.carrier).sum()
+        costs[(c.list_name, 'capital')] = (c.df[p_nom] * c.df.capital_cost).groupby(c.df.carrier).sum(**agg_group_kwargs)
         if p_attr is not None:
             p = c.pnl[p_attr].sum()
             if c.name == 'StorageUnit':
                 p = p.loc[p > 0]
-            costs[(c.list_name, 'marginal')] = (p*c.df.marginal_cost).groupby(c.df.carrier).sum()
+            costs[(c.list_name, 'marginal')] = (p*c.df.marginal_cost).groupby(c.df.carrier).sum(**agg_group_kwargs)
     costs = pd.concat(costs)
 
     if flatten:

@@ -11,6 +11,10 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 os.chdir("/home/ws/bw0928/Dokumente/PyPSA")
 sys.path = [os.pardir] + sys.path
 import pypsa
@@ -735,7 +739,7 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points, segment
         caps = expand_series(get_var(n, c, attr).loc[learn_assets], investments)
 
         carriers = n.df(c).loc[learn_assets, "carrier"].unique()
-        lhs[carriers] += linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum().T
+        lhs[carriers] += linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
     define_constraints(n, lhs, '=', 0, 'Carrier', 'cap_per_asset')
 
 

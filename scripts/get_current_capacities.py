@@ -18,6 +18,10 @@ reads today's installed capacities
 import pandas as pd
 import pycountry
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 #%%
 irena_map = {'On-grid Solar photovoltaic': "solar",
              'Off-grid Solar photovoltaic': "solar",
@@ -69,13 +73,13 @@ index = pd.Index(irena_map.values()).unique()
 # capacities of chosen countries
 cap_local = capacities[(capacities.Region=="Europe") & (capacities.alpha_2.isin(countries))]
 cap_local = (cap_local[cap_local.carrier.isin(index)]['Electricity Installed Capacity (MW)']
-             .groupby([cap_local.carrier, cap_local.alpha_2]).sum())
+             .groupby([cap_local.carrier, cap_local.alpha_2]).sum(**agg_group_kwargs))
 cap_local.to_csv(snakemake.output.local_capacities)
 
 # ----------------------------------------------------------------------------
 # GLOBAL CAPACITIES ##########################################################
 # IRENA onwind, solar, offwind, nuclear
-global_caps = capacities['Electricity Installed Capacity (MW)'].groupby(capacities.carrier).sum()
+global_caps = capacities['Electricity Installed Capacity (MW)'].groupby(capacities.carrier).sum(**agg_group_kwargs)
 
 # H2 electrolysis ################################
 # https://www.researchgate.net/publication/321682272_Future_cost_and_performance_of_water_electrolysis_An_expert_elicitation_study
@@ -115,7 +119,7 @@ global_caps.loc[index].to_csv(snakemake.output.global_capacities)
 
 # ----------------------------------------------------------------------------
 # get fraction of global capacities
-fraction = cap_local.groupby(level=0).sum() / global_caps.loc[index]
+fraction = cap_local.groupby(level=0).sum(**agg_group_kwargs) / global_caps.loc[index]
 fraction.name = "Fraction of global installed capacity"
 fraction.to_csv(snakemake.output.fraction)
 

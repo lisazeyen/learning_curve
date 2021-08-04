@@ -53,6 +53,10 @@ from .descriptors import (get_switchable_as_dense, get_switchable_as_iter,
 
 pd.Series.zsum = zsum
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 
 
 def network_opf(network,snapshots=None):
@@ -1295,7 +1299,7 @@ def extract_optimisation_results(network, snapshots, formulation="angles", free_
         network.buses_t.p.loc[snapshots] = \
             pd.concat({c.name:
                        c.pnl.p.loc[snapshots].multiply(c.df.sign, axis=1)
-                       .groupby(c.df.bus, axis=1).sum()
+                       .groupby(c.df.bus, axis=1).sum(**agg_group_kwargs)
                        for c in network.iterate_components(network.controllable_one_port_components)},
                       sort=False) \
               .sum(level=1) \
@@ -1323,11 +1327,11 @@ def extract_optimisation_results(network, snapshots, formulation="angles", free_
         network.links_t.p1.loc[snapshots] = - network.links_t.p0.loc[snapshots]*efficiency.loc[snapshots,:]
 
         network.buses_t.p.loc[snapshots] -= (network.links_t.p0.loc[snapshots]
-                                             .groupby(network.links.bus0, axis=1).sum()
+                                             .groupby(network.links.bus0, axis=1).sum(**agg_group_kwargs)
                                              .reindex(columns=network.buses_t.p.columns, fill_value=0.))
 
         network.buses_t.p.loc[snapshots] -= (network.links_t.p1.loc[snapshots]
-                                             .groupby(network.links.bus1, axis=1).sum()
+                                             .groupby(network.links.bus1, axis=1).sum(**agg_group_kwargs)
                                              .reindex(columns=network.buses_t.p.columns, fill_value=0.))
 
         #Add any other buses to which the links are attached
@@ -1337,7 +1341,7 @@ def extract_optimisation_results(network, snapshots, formulation="angles", free_
             links = network.links.index[network.links["bus{}".format(i)] != ""]
             network.links_t[p_name].loc[snapshots, links] = - network.links_t.p0.loc[snapshots, links]*efficiency.loc[snapshots, links]
             network.buses_t.p.loc[snapshots] -= (network.links_t[p_name].loc[snapshots, links]
-                                                 .groupby(network.links["bus{}".format(i)], axis=1).sum()
+                                                 .groupby(network.links["bus{}".format(i)], axis=1).sum(**agg_group_kwargs)
                                                  .reindex(columns=network.buses_t.p.columns, fill_value=0.))
 
 

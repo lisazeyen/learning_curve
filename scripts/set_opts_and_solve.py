@@ -19,6 +19,10 @@ from pypsa_learning.linopt import get_var, linexpr, define_constraints
 from pypsa_learning.temporal_clustering import aggregate_snapshots
 from pypsa_learning.learning import add_learning
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 from vresutils.benchmark import memory_logger
 logger = logging.getLogger(__name__)
 
@@ -81,10 +85,10 @@ def cluster_network(n, years):
             for key in keys:
                 agg[key] = aggregate_dict[key]
             if hasattr(df, "build_year"):
-                df = df.groupby(["carrier", "build_year"]).agg(agg)
+                df = df.groupby(["carrier", "build_year"]).agg(agg, **agg_group_kwargs)
                 df.index = pd.Index([f'{i}-{int(j)}' for i, j in df.index])
             else:
-                df = df.groupby("carrier").agg(agg)
+                df = df.groupby("carrier").agg(agg, **agg_group_kwargs)
             # rename location
             df["country"] = "EU"
             df["location"] = "EU"
@@ -111,10 +115,10 @@ def cluster_network(n, years):
 
         for k in component.pnl.keys():
             if hasattr(df, "build_year"):
-                pnl[k] = component.pnl[k].groupby([df.carrier, df.build_year],axis=1).agg(agg[k])
+                pnl[k] = component.pnl[k].groupby([df.carrier, df.build_year],axis=1).agg(agg[k], **agg_group_kwargs)
                 pnl[k].columns = pd.Index([f'{i}-{int(j)}' for i, j in pnl[k].columns])
             else:
-                pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k])
+                pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k], **agg_group_kwargs)
             pnl[k].fillna(n.components[component.name]["attrs"].loc[k, "default"], inplace=True)
 
     # drop not needed components --------------------------------------------
@@ -144,8 +148,8 @@ def cluster_network(n, years):
     to_drop = m.generators[m.generators.carrier.isin(split_carriers)]
     # scale up p_nom and p_nom_max
     for attr in ["p_nom", "p_nom_max"]:
-        attr_total = n.generators.groupby(["carrier", "build_year"]).sum()[attr]
-        attr_cts = split_df.groupby(["carrier", "build_year"]).sum()[attr]
+        attr_total = n.generators.groupby(["carrier", "build_year"]).sum(**agg_group_kwargs)[attr]
+        attr_cts = split_df.groupby(["carrier", "build_year"]).sum(**agg_group_kwargs)[attr]
         weight = attr_total.loc[attr_cts.index]/attr_cts
         default = n.components["Generator"]["attrs"]["default"].loc[attr]
         weight_series = pd.Series(split_df.set_index(["carrier", "build_year"])
@@ -273,7 +277,7 @@ def prepare_data(gf_default=0.3):
     # for GlobalConstraint of the technical limit at each node, get the p_nom_max
     p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier,
                                                       n.generators.bus,
-                                                      n.generators.build_year]).sum()
+                                                      n.generators.build_year]).sum(**agg_group_kwargs)
     p_nom_max_limit = p_nom_max_limit.xs(years[0], level=2)
 
     # global factor
@@ -511,14 +515,14 @@ def add_local_res_constraint(n,snapshots):
     cap_vars = get_var(n, c, attr)[ext_and_active.columns]
 
     lhs = (linexpr((ext_and_active, cap_vars)).T
-           .groupby([n.df(c).carrier, n.df(c).country]).sum().T)
+           .groupby([n.df(c).carrier, n.df(c).country]).sum(**agg_group_kwargs).T)
 
     p_nom_max_w = n.df(c).p_nom_max.loc[ext_and_active.columns]
     p_nom_max_t = expand_series(p_nom_max_w, time_valid).T
 
     rhs = (p_nom_max_t.mul(ext_and_active)
            .groupby([n.df(c).carrier, n.df(c).country], axis=1)
-           .max())
+           .max(**agg_group_kwargs))
 
     define_constraints(n, lhs, "<=", rhs, 'GlobalConstraint', 'res_limit')
 
@@ -532,7 +536,7 @@ def add_capacity_constraint(n, snapshots):
 
     cap_vars = get_var(n, c, attr)[ext_i]
 
-    lhs = linexpr((1, cap_vars)).groupby(n.df(c).carrier).sum().reindex(index=res)
+    lhs = linexpr((1, cap_vars)).groupby(n.df(c).carrier).sum(**agg_group_kwargs).reindex(index=res)
 
     rhs = pd.Series([140e3, 200e3, 900e3, 700e3, 400e3], index=res)
 
@@ -625,7 +629,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="146sn",
+            sector_opts="146sn-learnsolarp0",
             clusters="37",
         )
 

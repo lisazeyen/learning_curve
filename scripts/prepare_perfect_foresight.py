@@ -17,6 +17,10 @@ from pypsa_learning.descriptors import expand_series
 from vresutils.costdata import annuity
 import re
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +246,7 @@ def update_costs(n,costs, years):
     """Update all costs according to costs in the first investment period."""
 
     def get_first_attr(df, attr):
-        map_dict = (df[attr].groupby([df.carrier, df.build_year]).first()
+        map_dict = (df[attr].groupby([df.carrier, df.build_year]).first(**agg_group_kwargs)
                     .sort_index().groupby(level=0).first())
         return df.carrier.map(map_dict)
 
@@ -299,7 +303,7 @@ def update_capacities(n):
     weight = (n.generators.p_nom /
               n.generators.p_nom
               .groupby([n.generators.carrier, n.generators.country])
-              .transform("sum")).fillna(0)
+              .transform("sum", **agg_group_kwargs)).fillna(0)
 
     # installed renewable capacities according to IRENA
     local_capacity = pd.read_csv(snakemake.input.local_capacity, index_col=0)
@@ -321,7 +325,7 @@ def update_capacities(n):
     weight = (n.links.p_nom /
               n.links.p_nom
               .groupby([n.links.carrier, n.links.country])
-              .transform("sum")).fillna(0)
+              .transform("sum", **agg_group_kwargs)).fillna(0)
     n.links.loc[links_i, "p_nom"] = (p_nom.mul(weight) / n.links.efficiency).loc[links_i]
 
     # coal
@@ -332,7 +336,7 @@ def update_capacities(n):
     weight = (n.links.p_nom /
               n.links.p_nom
               .groupby(n.links.carrier)
-              .transform("sum")).fillna(0)
+              .transform("sum", **agg_group_kwargs)).fillna(0)
 
     conventional = ["lignite", "coal"]
     links_i = n.links.loc[n.links.carrier.isin(conventional)].index
@@ -363,10 +367,10 @@ def set_multi_index(n, years, social_discountrate):
     """Set snapshots to pd.MultiImdex."""
     loads_t = (n.loads_t.p_set
                .groupby([n.loads.carrier, n.loads.bus, n.loads.build_year],
-                        axis=1).sum()
+                        axis=1).sum(**agg_group_kwargs)
                .stack().swaplevel().sort_index().fillna(0))
     helper = n.loads.reset_index()
-    load_df_i = helper.groupby([helper.carrier, helper.bus]).first()["name"]
+    load_df_i = helper.groupby([helper.carrier, helper.bus]).first(**agg_group_kwargs)["name"]
     loads_t.columns = loads_t.columns.map(load_df_i)
     # loads_t.rename(columns=lambda x: x.replace("-2020", ""), inplace=True)
     loads_t.index.rename(['investment_period', 'snapshot'], inplace=True)

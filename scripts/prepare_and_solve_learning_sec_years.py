@@ -23,6 +23,9 @@ from pypsa_learning.descriptors import nominal_attrs, get_extendable_i, get_acti
 from pypsa_learning.linopt import get_var, linexpr, define_constraints
 from pypsa_learning.io import import_components_from_dataframe
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
 
 logger = logging.getLogger(__name__)
 
@@ -203,20 +206,20 @@ def update_other_costs(n,costs, years):
     for c in n.iterate_components(n.one_port_components|n.branch_components):
         df = c.df
         if (df.empty or (c.name in(["Line", "StorageUnit", "Load"]))): continue
-        capital_map =  c.df["capital_cost"].groupby([c.df.carrier, c.df.build_year]).first().sort_index().groupby(level=0).first()
+        capital_map =  c.df["capital_cost"].groupby([c.df.carrier, c.df.build_year]).first(**agg_group_kwargs).sort_index().groupby(level=0).first()
         c.df["capital_cost"] = c.df.carrier.map(capital_map)
         # c.df["capital_cost"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["fixed"]).fillna(c.df.capital_cost)
         if "efficiency" in c.df.columns:
             c.df["efficiency"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["efficiency"]).fillna(c.df.efficiency)
         if "efficiency2" in c.df.columns:
-            efficiency_map = c.df["efficiency2"].groupby([c.df.carrier, c.df.build_year]).first().sort_index().groupby(level=0).first()
+            efficiency_map = c.df["efficiency2"].groupby([c.df.carrier, c.df.build_year]).first(**agg_group_kwargs).sort_index().groupby(level=0).first()
             c.df["efficiency2"] = c.df.carrier.map(efficiency_map)
-            efficiency_map = c.df["efficiency3"].groupby([c.df.carrier, c.df.build_year]).first().sort_index().groupby(level=0).first()
+            efficiency_map = c.df["efficiency3"].groupby([c.df.carrier, c.df.build_year]).first(**agg_group_kwargs).sort_index().groupby(level=0).first()
             c.df["efficiency3"] = c.df.carrier.map(efficiency_map)
-            efficiency_map = c.df["efficiency4"].groupby([c.df.carrier, c.df.build_year]).first().sort_index().groupby(level=0).first()
+            efficiency_map = c.df["efficiency4"].groupby([c.df.carrier, c.df.build_year]).first(**agg_group_kwargs).sort_index().groupby(level=0).first()
             c.df["efficiency4"] = c.df.carrier.map(efficiency_map)
         c.df["lifetime"] = c.df.carrier.replace(map_dict).map(costs[years[0]]["lifetime"]).fillna(c.df.lifetime)
-        marginal_map =  c.df["marginal_cost"].groupby([c.df.carrier, c.df.build_year]).first().sort_index().groupby(level=0).first()
+        marginal_map =  c.df["marginal_cost"].groupby([c.df.carrier, c.df.build_year]).first(**agg_group_kwargs).sort_index().groupby(level=0).first()
         c.df["marginal_cost"] = c.df.carrier.map(marginal_map)
 
     # electrolysis costs overwrite
@@ -264,7 +267,7 @@ def prepare_data(gf_default=0.3):
     # for GlobalConstraint of the technical limit at each node, get the p_nom_max
     p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier,
                                                       n.generators.bus,
-                                                      n.generators.build_year]).sum()
+                                                      n.generators.build_year]).sum(**agg_group_kwargs)
     p_nom_max_limit = p_nom_max_limit.xs(years[0], level=2)
 
     # global factor
@@ -562,7 +565,7 @@ def get_nodal_balance(carrier="gas"):
             continue
 
         s = round(c.pnl.p.multiply(n.snapshot_weightings.generator_weightings,axis=0).sum().multiply(c.df['sign']).loc[items]
-             .groupby([c.df.bus, c.df.carrier]).sum())
+             .groupby([c.df.bus, c.df.carrier]).sum(**agg_group_kwargs))
         s = pd.concat([s], keys=[c.list_name])
         s = pd.concat([s], keys=[carrier])
 
@@ -580,7 +583,7 @@ def get_nodal_balance(carrier="gas"):
                 continue
 
             s = ((-1)*c.pnl["p"+end][items].multiply(n.snapshot_weightings.generator_weightings,axis=0).sum()
-                .groupby([c.df.loc[items,'bus{}'.format(end)], c.df.loc[items,'carrier']]).sum())
+                .groupby([c.df.loc[items,'bus{}'.format(end)], c.df.loc[items,'carrier']]).sum(**agg_group_kwargs))
             s.index = s.index
             s = pd.concat([s], keys=[c.list_name])
             s = pd.concat([s], keys=[carrier])
@@ -632,14 +635,14 @@ def add_local_res_constraint(n,snapshots):
     cap_vars = get_var(n, c, attr)[ext_and_active.columns]
 
     lhs = (linexpr((ext_and_active, cap_vars)).T
-           .groupby([n.df(c).carrier, n.df(c).country]).sum().T)
+           .groupby([n.df(c).carrier, n.df(c).country]).sum(**agg_group_kwargs).T)
 
     p_nom_max_w = n.df(c).p_nom_max.div(n.df(c).weight).loc[ext_and_active.columns]
     p_nom_max_t = expand_series(p_nom_max_w, time_valid).T
 
     rhs = (p_nom_max_t.mul(ext_and_active)
            .groupby([n.df(c).carrier, n.df(c).country], axis=1)
-           .max())
+           .max(**agg_group_kwargs))
 
     define_constraints(n, lhs, "<=", rhs, 'GlobalConstraint', 'res_limit')
 
@@ -724,11 +727,11 @@ set_multi_index(n, years, social_discountrate)
 
 # take care of loads --------------------------------------------------------
 loads = (n.loads_t.p_set.groupby([n.loads.carrier, n.loads.build_year], axis=1)
-         .sum().loc[years[0]].stack().swaplevel().groupby(level=[0,1]).first())
+         .sum(**agg_group_kwargs).loc[years[0]].stack().swaplevel().groupby(level=[0,1]).first())
 loads.fillna(0, inplace=True)
 
 keep  = (n.loads.loc[n.loads_t.p_set.columns]
-         .groupby([n.loads.carrier, n.loads.build_year]).sum()
+         .groupby([n.loads.carrier, n.loads.build_year]).sum(**agg_group_kwargs)
          .groupby(level=0).first())
 keep.index = keep.index + " " + keep.build_year.astype(str)
 drop = n.loads_t.p_set.columns.difference(keep.index)

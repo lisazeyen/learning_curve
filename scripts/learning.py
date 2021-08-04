@@ -19,6 +19,10 @@ from pypsa_learning.linopt import (linexpr, write_bound, write_objective,
                       get_var, define_constraints, define_variables,
                       define_binaries)
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -609,7 +613,7 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points,
         caps = expand_series(get_var(n, c, attr).loc[learn_assets], investments)
 
         carriers = n.df(c).loc[learn_assets, "carrier"].unique()
-        lhs[carriers] += linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum().T.reindex(columns=carriers)
+        lhs[carriers] += linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T.reindex(columns=carriers)
     define_constraints(n, lhs, '=', 0, 'Carrier', 'cap_per_asset')
 
 

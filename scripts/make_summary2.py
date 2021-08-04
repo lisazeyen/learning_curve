@@ -14,6 +14,10 @@ from vresutils.costdata import annuity
 from pypsa_learning.descriptors import (get_extendable_i, expand_series,
                                         nominal_attrs, get_active_assets)
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 import yaml
 
 idx = pd.IndexSlice
@@ -88,7 +92,7 @@ def assign_locations(n):
 def calculate_nodal_cfs(n,label,nodal_cfs):
     #Beware this also has extraneous locations for country (e.g. biomass) or continent-wide (e.g. fossil gas/oil) stuff
     for c in n.iterate_components((n.branch_components^{"Line","Transformer"})|n.controllable_one_port_components^{"Load","StorageUnit"}):
-        capacities_c = c.df.groupby(["location","carrier"])[opt_name.get(c.name,"p") + "_nom_opt"].sum()
+        capacities_c = c.df.groupby(["location","carrier"])[opt_name.get(c.name,"p") + "_nom_opt"].sum(**agg_group_kwargs)
 
         if c.name == "Link":
             p = c.pnl.p0.abs().mean()
@@ -100,7 +104,7 @@ def calculate_nodal_cfs(n,label,nodal_cfs):
             sys.exit()
 
         c.df["p"] = p
-        p_c = c.df.groupby(["location","carrier"])["p"].sum()
+        p_c = c.df.groupby(["location","carrier"])["p"].sum(**agg_group_kwargs)
 
         cf_c = p_c/capacities_c
 
@@ -117,7 +121,7 @@ def calculate_nodal_cfs(n,label,nodal_cfs):
 def calculate_cfs(n,label,cfs):
 
     for c in n.iterate_components(n.branch_components|n.controllable_one_port_components^{"Load","StorageUnit"}):
-        capacities_c = c.df[opt_name.get(c.name,"p") + "_nom_opt"].groupby(c.df.carrier).sum()
+        capacities_c = c.df[opt_name.get(c.name,"p") + "_nom_opt"].groupby(c.df.carrier).sum(**agg_group_kwargs)
 
         if c.name in ["Link","Line","Transformer"]:
             p = c.pnl.p0.abs().mean()
@@ -126,7 +130,7 @@ def calculate_cfs(n,label,cfs):
         else:
             p = c.pnl.p.abs().mean()
 
-        p_c = p.groupby(c.df.carrier).sum()
+        p_c = p.groupby(c.df.carrier).sum(**agg_group_kwargs)
 
         cf_c = p_c/capacities_c
 
@@ -145,7 +149,7 @@ def calculate_nodal_costs(n,label,nodal_costs):
     #Beware this also has extraneous locations for country (e.g. biomass) or continent-wide (e.g. fossil gas/oil) stuff
     for c in n.iterate_components(n.branch_components|n.controllable_one_port_components^{"Load"}):
         c.df["capital_costs"] = c.df.capital_cost*c.df[opt_name.get(c.name,"p") + "_nom_opt"]
-        capital_costs = c.df.groupby(["location","carrier"])["capital_costs"].sum()
+        capital_costs = c.df.groupby(["location","carrier"])["capital_costs"].sum(**agg_group_kwargs)
         index = pd.MultiIndex.from_tuples([(c.list_name,"capital") + t for t in capital_costs.index.to_list()])
         nodal_costs = nodal_costs.reindex(index.union(nodal_costs.index))
         nodal_costs.loc[index,label] = capital_costs.values
@@ -167,7 +171,7 @@ def calculate_nodal_costs(n,label,nodal_costs):
             c.df.loc[items,"marginal_cost"] = -20.
 
         c.df["marginal_costs"] = p*c.df.marginal_cost
-        marginal_costs = c.df.groupby(["location","carrier"])["marginal_costs"].sum()
+        marginal_costs = c.df.groupby(["location","carrier"])["marginal_costs"].sum(**agg_group_kwargs)
         index = pd.MultiIndex.from_tuples([(c.list_name,"marginal") + t for t in marginal_costs.index.to_list()])
         nodal_costs = nodal_costs.reindex(index.union(nodal_costs.index))
         nodal_costs.loc[index,label] = marginal_costs.values
@@ -191,7 +195,7 @@ def calculate_costs(n,label,costs):
                   for inv_p in investments], axis=1).astype(int)
         capital_costs = active.mul(capital_costs, axis=0)
         discount = n.investment_period_weightings["objective_weightings"]/n.investment_period_weightings["time_weightings"]
-        capital_costs_grouped = capital_costs.groupby(c.df.carrier).sum().mul(discount)
+        capital_costs_grouped = capital_costs.groupby(c.df.carrier).sum(**agg_group_kwargs).mul(discount)
 
         capital_costs_grouped = pd.concat([capital_costs_grouped], keys=["capital"])
         capital_costs_grouped = pd.concat([capital_costs_grouped], keys=[c.list_name])
@@ -218,7 +222,7 @@ def calculate_costs(n,label,costs):
 
         marginal_costs = p.mul(c.df.marginal_cost).T
         # marginal_costs = active.mul(marginal_costs, axis=0)
-        marginal_costs_grouped = marginal_costs.groupby(c.df.carrier).sum().mul(discount)
+        marginal_costs_grouped = marginal_costs.groupby(c.df.carrier).sum(**agg_group_kwargs).mul(discount)
 
         marginal_costs_grouped = pd.concat([marginal_costs_grouped], keys=["marginal"])
         marginal_costs_grouped = pd.concat([marginal_costs_grouped], keys=[c.list_name])
@@ -256,7 +260,7 @@ def calculate_cumulative_cost():
 def calculate_nodal_capacities(n,label,nodal_capacities):
     #Beware this also has extraneous locations for country (e.g. biomass) or continent-wide (e.g. fossil gas/oil) stuff
     for c in n.iterate_components(n.branch_components|n.controllable_one_port_components^{"Load"}):
-        nodal_capacities_c = c.df.groupby(["location","carrier"])[opt_name.get(c.name,"p") + "_nom_opt"].sum()
+        nodal_capacities_c = c.df.groupby(["location","carrier"])[opt_name.get(c.name,"p") + "_nom_opt"].sum(**agg_group_kwargs)
         index = pd.MultiIndex.from_tuples([(c.list_name,) + t for t in nodal_capacities_c.index.to_list()])
         nodal_capacities = nodal_capacities.reindex(index.union(nodal_capacities.index))
         nodal_capacities.loc[index,label] = nodal_capacities_c.values
@@ -282,7 +286,7 @@ def calculate_capacities(n,label,capacities):
                   for inv_p in investments], axis=1).astype(int)
         caps = c.df[opt_name.get(c.name,"p") + "_nom_opt"]
         caps = active.mul(caps, axis=0)
-        capacities_grouped = caps.groupby(c.df.carrier).sum().drop("load", errors="ignore")
+        capacities_grouped = caps.groupby(c.df.carrier).sum(**agg_group_kwargs).drop("load", errors="ignore")
         capacities_grouped = pd.concat([capacities_grouped], keys=[c.list_name])
 
         capacities = capacities.reindex(capacities_grouped.index.union(capacities.index))
@@ -294,8 +298,8 @@ def calculate_capacities(n,label,capacities):
 
 def calculate_curtailment(n,label,curtailment):
 
-    avail = n.generators_t.p_max_pu.multiply(n.generators.p_nom_opt).sum().groupby(n.generators.carrier).sum()
-    used = n.generators_t.p.sum().groupby(n.generators.carrier).sum()
+    avail = n.generators_t.p_max_pu.multiply(n.generators.p_nom_opt).sum().groupby(n.generators.carrier).sum(**agg_group_kwargs)
+    used = n.generators_t.p.sum().groupby(n.generators.carrier).sum(**agg_group_kwargs)
 
     curtailment[label] = (((avail - used)/avail)*100).round(3)
 
@@ -306,7 +310,7 @@ def calculate_energy(n,label,energy):
     for c in n.iterate_components(n.one_port_components|n.branch_components):
 
         if c.name in n.one_port_components:
-            c_energies = c.pnl.p.multiply(n.snapshot_weightings,axis=0).sum().multiply(c.df.sign).groupby(c.df.carrier).sum()
+            c_energies = c.pnl.p.multiply(n.snapshot_weightings,axis=0).sum().multiply(c.df.sign).groupby(c.df.carrier).sum(**agg_group_kwargs)
         else:
             c_energies = pd.Series(0.,c.df.carrier.unique())
             for port in [col[3:] for col in c.df.columns if col[:3] == "bus"]:
@@ -314,7 +318,7 @@ def calculate_energy(n,label,energy):
                 #remove values where bus is missing (bug in nomopyomo)
                 no_bus = c.df.index[c.df["bus"+port] == ""]
                 totals.loc[no_bus] = n.component_attrs[c.name].loc["p"+port,"default"]
-                c_energies -= totals.groupby(c.df.carrier).sum()
+                c_energies -= totals.groupby(c.df.carrier).sum(**agg_group_kwargs)
 
         c_energies = pd.concat([c_energies], keys=[c.list_name])
 
@@ -341,7 +345,7 @@ def calculate_supply(n,label,supply):
             if len(items) == 0:
                 continue
 
-            s = c.pnl.p[items].max().multiply(c.df.loc[items,'sign']).groupby(c.df.loc[items,'carrier']).sum()
+            s = c.pnl.p[items].max().multiply(c.df.loc[items,'sign']).groupby(c.df.loc[items,'carrier']).sum(**agg_group_kwargs)
             s = pd.concat([s], keys=[c.list_name])
             s = pd.concat([s], keys=[i])
 
@@ -359,7 +363,7 @@ def calculate_supply(n,label,supply):
                     continue
 
                 #lots of sign compensation for direction and to do maximums
-                s = (-1)**(1-int(end))*((-1)**int(end)*c.pnl["p"+end][items]).max().groupby(c.df.loc[items,'carrier']).sum()
+                s = (-1)**(1-int(end))*((-1)**int(end)*c.pnl["p"+end][items]).max().groupby(c.df.loc[items,'carrier']).sum(**agg_group_kwargs)
                 s.index = s.index+end
                 s = pd.concat([s], keys=[c.list_name])
                 s = pd.concat([s], keys=[i])
@@ -400,7 +404,7 @@ def calculate_supply_energy(n,label,supply_energy):
 
             s = (c.pnl.p[items].multiply(weightings,axis=0).groupby(level=0).sum()
                  .multiply(c.df.loc[items,'sign'])
-                 .groupby(c.df.loc[items,'carrier'], axis=1).sum().T)
+                 .groupby(c.df.loc[items,'carrier'], axis=1).sum(**agg_group_kwargs).T)
             s = pd.concat([s], keys=[c.list_name])
             s = pd.concat([s], keys=[i])
 
@@ -420,7 +424,7 @@ def calculate_supply_energy(n,label,supply_energy):
                 s = ((-1)*c.pnl["p"+end].reindex(items, axis=1)
                      .multiply(n.snapshot_weightings.objective_weightings,axis=0)
                      .groupby(level=0).sum()
-                     .groupby(c.df.loc[items,'carrier'], axis=1).sum()).T
+                     .groupby(c.df.loc[items,'carrier'], axis=1).sum(**agg_group_kwargs)).T
                 s.index = s.index+end
                 s = pd.concat([s], keys=[c.list_name])
                 s = pd.concat([s], keys=[i])
@@ -455,7 +459,7 @@ def calculate_prices(n,label,prices):
     prices = prices.reindex(prices.index.union(n.buses.carrier.unique()))
 
     #WARNING: this is time-averaged, see weighted_prices for load-weighted average
-    prices[label] = n.buses_t.marginal_price.mean().groupby(n.buses.carrier).mean()
+    prices[label] = n.buses_t.marginal_price.mean().groupby(n.buses.carrier).mean(**agg_group_kwargs)
 
     return prices
 
@@ -621,7 +625,7 @@ def calculate_co2_emissions(n, label, df):
                 em_pu.to_frame('weightings').T
         emitted = n.generators_t.p[gens.index].mul(em_pu)
 
-        emitted_grouped = emitted.groupby(level=0).sum().groupby(n.generators.carrier, axis=1).sum().T
+        emitted_grouped = emitted.groupby(level=0).sum().groupby(n.generators.carrier, axis=1).sum(**agg_group_kwargs).T
 
         df = df.reindex(emitted_grouped.index.union(df.index))
 
@@ -653,7 +657,7 @@ def calculate_capital_costs_learning(n, label, df):
         if learn_assets.empty: continue
         capital_cost = (n.df(c).loc[learn_assets]
                         .groupby([n.df(c).carrier,n.df(c).build_year])
-                        .mean().capital_cost.unstack()
+                        .mean(**agg_group_kwargs).capital_cost.unstack()
                         .reindex(columns=investments))
         capital_cost.fillna(method="ffill", axis=1)
 
@@ -681,7 +685,7 @@ def calculate_cumulative_capacities(n, label, cum_cap):
         if "carrier" not in n.df(c) or n.df(c).empty: continue
         caps = (n.df(c)[n.df(c).carrier.isin(learn_i)]
                 .groupby([n.df(c).carrier, n.df(c).build_year])
-                [opt_name.get(c,"p") + "_nom_opt"].sum())
+                [opt_name.get(c,"p") + "_nom_opt"].sum(**agg_group_kwargs))
 
         if caps.empty:continue
 

@@ -22,6 +22,9 @@ from learning import add_learning
 from pypsa_learning.temporal_clustering import aggregate_snapshots, temporal_aggregation_storage_constraints
 from pypsa_learning.descriptors import nominal_attrs, get_extendable_i
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +295,7 @@ def prepare_data(gf_default=0.3):
     p_nom = (local_caps.reindex(n.generators.set_index(["carrier", "country"]).index)
             .set_index(n.generators.index)['Electricity Installed Capacity (MW)'])
     # for GlobalConstraint of the technical limit at each node, get the p_nom_max
-    p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum()
+    p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum(**agg_group_kwargs)
 
     # global factor
     global_factor = (local_capacity.groupby(local_capacity.index).sum()
@@ -310,7 +313,7 @@ def update_network(n, p_nom):
     (3) update the cost assumptions and efficiencies
     """
     # TODO IRENA data is per country assign capacity to first bus
-    first_bus = (n.buses.reset_index()).groupby(n.buses.reset_index().country).first().name
+    first_bus = (n.buses.reset_index()).groupby(n.buses.reset_index().country).first(**agg_group_kwargs).name
     gen_i = p_nom[~p_nom.isna() & n.generators.bus.isin(first_bus)].index
     not_first = p_nom[~p_nom.isna()].index.difference(gen_i)
     n.generators.loc[not_first, "p_nom"] = 0

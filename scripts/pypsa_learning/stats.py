@@ -11,6 +11,10 @@ from .descriptors import (expand_series, get_switchable_as_dense as get_as_dense
 import pandas as pd
 import logging
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 idx = pd.IndexSlice
 
 
@@ -32,9 +36,9 @@ def calculate_costs(n):
 def calculate_curtailment(n):
     max_pu = n.generators_t.p_max_pu
     avail = (max_pu.multiply(n.generators.p_nom_opt.loc[max_pu.columns]).sum()
-             .groupby(n.generators.carrier).sum())
+             .groupby(n.generators.carrier).sum(**agg_group_kwargs))
     used = (n.generators_t.p[max_pu.columns].sum()
-            .groupby(n.generators.carrier).sum())
+            .groupby(n.generators.carrier).sum(**agg_group_kwargs))
     return (((avail - used)/avail)*100).round(3)
 
 

@@ -11,6 +11,10 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 os.chdir("/home/ws/bw0928/Dokumente/PyPSA")
 sys.path = [os.pardir] + sys.path
 import pypsa
@@ -72,7 +76,7 @@ nhours=876
 n = pypsa.Network(path_eur + "networks/elec_s_45_ec.nc")
 
 # For GlobalConstraint of the technical limit at each node, get the p_nom_max
-p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum()
+p_nom_max_limit = n.generators.p_nom_max.groupby([n.generators.carrier, n.generators.bus]).sum(**agg_group_kwargs)
 
 n.set_snapshots(n.snapshots[::nhours])
 n.snapshot_weightings.loc[:] = nhours

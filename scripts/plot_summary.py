@@ -12,6 +12,10 @@ matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 # from prepare_sector_network import co2_emissions_year
 
 plt.style.use('seaborn')

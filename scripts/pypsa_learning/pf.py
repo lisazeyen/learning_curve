@@ -40,6 +40,10 @@ import six
 from operator import itemgetter
 import time
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 from .descriptors import get_switchable_as_dense, allocate_series_dataframes, Dict, zsum, degree
 
 pd.Series.zsum = zsum
@@ -95,13 +99,13 @@ def _calculate_controllable_nodal_power_balance(sub_network, network, snapshots,
         # set the power injection at each node from controllable components
         network.buses_t[n].loc[snapshots, buses_o] = \
             sum([((c.pnl[n].loc[snapshots, c.ind] * c.df.loc[c.ind, 'sign'])
-                  .groupby(c.df.loc[c.ind, 'bus'], axis=1).sum()
+                  .groupby(c.df.loc[c.ind, 'bus'], axis=1).sum(**agg_group_kwargs)
                   .reindex(columns=buses_o, fill_value=0.))
                  for c in sub_network.iterate_components(network.controllable_one_port_components)])
 
         if n == "p":
             network.buses_t[n].loc[snapshots, buses_o] += sum(
-                [(- c.pnl[n+str(i)].loc[snapshots].groupby(c.df["bus"+str(i)], axis=1).sum()
+                [(- c.pnl[n+str(i)].loc[snapshots].groupby(c.df["bus"+str(i)], axis=1).sum(**agg_group_kwargs)
                   .reindex(columns=buses_o, fill_value=0))
                  for c in network.iterate_components(network.controllable_branch_components)
                  for i in [int(col[3:]) for col in c.df.columns if col[:3] == "bus"]])
@@ -487,7 +491,7 @@ def sub_network_pf(sub_network, snapshots=None, skip_pre=False, x_tol=1e-6, use_
 
         elif isinstance(slack_weights, str) and slack_weights in ['p_nom', 'p_nom_opt']:
             assert not all(network.generators[slack_weights]) == 0, "Invalid slack weights! Generator attribute {} is always zero.".format(slack_weights)
-            slack_weights_calc = network.generators.groupby('bus').sum()[slack_weights].reindex(buses_o).pipe(normed).fillna(0)
+            slack_weights_calc = network.generators.groupby('bus').sum(**agg_group_kwargs)[slack_weights].reindex(buses_o).pipe(normed).fillna(0)
 
         elif generator_slack_weights_b:
             # convert generator-based slack weights to bus-based slack weights
@@ -817,7 +821,7 @@ def find_bus_controls(sub_network):
     #find all buses with one or more gens with PV
     pvs = gens[gens.control == 'PV'].index.to_series()
     if len(pvs) > 0:
-        pvs = pvs.groupby(gens.bus).first()
+        pvs = pvs.groupby(gens.bus).first(**agg_group_kwargs)
         network.buses.loc[pvs.index, "control"] = "PV"
         network.buses.loc[pvs.index, "generator"] = pvs
 
@@ -1167,11 +1171,11 @@ def sub_network_lpf(sub_network, snapshots=None, skip_pre=False):
     # set the power injection at each node
     network.buses_t.p.loc[snapshots, buses_o] = \
         sum([((c.pnl.p.loc[snapshots, c.ind] * c.df.loc[c.ind, 'sign'])
-              .groupby(c.df.loc[c.ind, 'bus'], axis=1).sum()
+              .groupby(c.df.loc[c.ind, 'bus'], axis=1).sum(**agg_group_kwargs)
               .reindex(columns=buses_o, fill_value=0.))
              for c in sub_network.iterate_components(network.one_port_components)]
             +
-            [(- c.pnl["p"+str(i)].loc[snapshots].groupby(c.df["bus"+str(i)], axis=1).sum()
+            [(- c.pnl["p"+str(i)].loc[snapshots].groupby(c.df["bus"+str(i)], axis=1).sum(**agg_group_kwargs)
               .reindex(columns=buses_o, fill_value=0))
              for c in network.iterate_components(network.controllable_branch_components)
              for i in [int(col[3:]) for col in c.df.columns if col[:3] == "bus"]])

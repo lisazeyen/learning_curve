@@ -14,6 +14,10 @@ import logging
 import pypsa
 from pypsa.io import import_components_from_dataframe
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +89,7 @@ for component in n.iterate_components(["Bus", "Carrier"] + other_comps):
         agg = dict(zip(df.columns.difference(keys), ["first"]*len(df.columns.difference(keys))))
         for key in keys:
             agg[key] = aggregate_dict[key]
-        df = df.groupby("carrier").agg(agg)
+        df = df.groupby("carrier").agg(agg, **agg_group_kwargs)
         # rename location
         df["country"] = "EU"
         df["location"] = "EU"
@@ -111,7 +115,7 @@ for component in n.iterate_components():
         agg[key] = aggregate_dict[key]
 
     for k in component.pnl.keys():
-        pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k])
+        pnl[k] = component.pnl[k].groupby(df.carrier,axis=1).agg(agg[k], **agg_group_kwargs)
         pnl[k].fillna(n.components[component.name]["attrs"].loc[k, "default"], inplace=True)
 
 to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
@@ -121,7 +125,7 @@ m.links.drop(to_drop, inplace=True, errors="ignore")
 m.global_constraints.drop(m.global_constraints.index, inplace=True)
 
 # adjust p nom max
-p_nom_max = n.generators[n.generators.p_nom_extendable].groupby(n.generators.carrier).sum().p_nom_max
+p_nom_max = n.generators[n.generators.p_nom_extendable].groupby(n.generators.carrier).sum(**agg_group_kwargs).p_nom_max
 m.generators.loc[p_nom_max[p_nom_max!=np.inf].index, "p_nom_max"] = p_nom_max[p_nom_max!=np.inf]
 #%%
 m.export_to_netcdf(snakemake.output[0])

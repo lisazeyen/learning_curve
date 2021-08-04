@@ -20,6 +20,10 @@ import numpy as np
 
 from six import iteritems
 
+from distutils.version import LooseVersion
+pd_version = LooseVersion(pd.__version__)
+agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
+
 idx = pd.IndexSlice
 
 logger = logging.getLogger(__name__)
@@ -27,7 +31,7 @@ logger = logging.getLogger(__name__)
 opt_name = {"Store": "e", "Line" : "s", "Transformer" : "s"}
 #%%
 def plot_generator_capacities(n):
-    caps = n.generators.p_nom_opt.groupby([n.generators.carrier, n.generators.build_year]).sum().drop("load", errors="ignore")
+    caps = n.generators.p_nom_opt.groupby([n.generators.carrier, n.generators.build_year]).sum(**agg_group_kwargs).drop("load", errors="ignore")
     (caps/1e3).unstack().plot(kind="bar", grid=True, stacked=True)
     plt.ylabel("GW")
     plt.savefig(snakemake.output.generator_caps, bbox_inches="tight")
@@ -90,8 +94,8 @@ def get_co2_emissions(n):
 
 def plot_cap_per_investment_period(n, c):
     caps = get_cap_per_investment_period(n, c)
-    caps = caps.groupby(n.df(c).carrier, axis=1).sum().drop("load", axis=1, errors="ignore")
-    caps = caps.groupby(caps.columns.map(rename_techs), axis=1).sum()
+    caps = caps.groupby(n.df(c).carrier, axis=1).sum(**agg_group_kwargs).drop("load", axis=1, errors="ignore")
+    caps = caps.groupby(caps.columns.map(rename_techs), axis=1).sum(**agg_group_kwargs)
     if not caps.empty:
         (caps/1e6).plot(kind="bar", stacked=True, grid=True, title="installed capacities",
                         color=[snakemake.config['plotting']['tech_colors'][i] for i in caps.columns])
@@ -106,9 +110,9 @@ def plot_generation(n, c):
     snakemake.config['plotting']['tech_colors']["Link losses"] = "red"
     snakemake.config['plotting']['tech_colors']["Line losses"] = "pink"
     tot = pd.concat([
-           n.generators_t.p.groupby(n.generators.carrier, axis=1).sum().mul(n.snapshot_weightings.generator_weightings, axis=0),
-           n.storage_units_t.p.groupby(n.storage_units.carrier, axis=1).sum().mul(n.snapshot_weightings.store_weightings, axis=0),
-           n.stores_t.p.groupby(n.stores.carrier, axis=1).sum().mul(n.snapshot_weightings.store_weightings, axis=0),
+           n.generators_t.p.groupby(n.generators.carrier, axis=1).sum(**agg_group_kwargs).mul(n.snapshot_weightings.generator_weightings, axis=0),
+           n.storage_units_t.p.groupby(n.storage_units.carrier, axis=1).sum(**agg_group_kwargs).mul(n.snapshot_weightings.store_weightings, axis=0),
+           n.stores_t.p.groupby(n.stores.carrier, axis=1).sum(**agg_group_kwargs).mul(n.snapshot_weightings.store_weightings, axis=0),
            -1 * n.loads_t.p_set.mul(n.snapshot_weightings.generator_weightings, axis=0).sum(axis=1).rename("demand"),
            -1 * pd.concat([n.links_t.p0, n.links_t.p1], axis=1).sum(axis=1).mul(n.snapshot_weightings.generator_weightings, axis=0).rename("Link losses"),
            -1 * pd.concat([n.lines_t.p0, n.lines_t.p1], axis=1).sum(axis=1).mul(n.snapshot_weightings.generator_weightings, axis=0).rename("Line losses")], axis=1)
@@ -123,7 +127,7 @@ def plot_generation(n, c):
 
 def plot_co2_emissions(co2_emissions):
 
-    grouped = co2_emissions.groupby(level=0).sum().groupby(n.generators.carrier, axis=1).sum()
+    grouped = co2_emissions.groupby(level=0).sum().groupby(n.generators.carrier, axis=1).sum(**agg_group_kwargs)
     grouped.plot(title="CO2 emissions", grid=True, kind="area")
     plt.ylabel("CO2 emissions [Mt]")
     plt.xlabel("investment period")
@@ -156,10 +160,10 @@ def plot_map(n, ax=None, opts={}):
 
     for year in generator_caps.index:
         # bus_sizes = n.generators_t.p.sum().loc[n.generators.carrier == "load"].groupby(n.generators.bus).sum()
-        bus_sizes = pd.concat((generator_caps.loc[year][n.generators.carrier!="load"].groupby([n.generators.bus, n.generators.carrier]).sum(),
-                               storage_caps.loc[year][n.storage_units.carrier!="load"].groupby([n.storage_units.bus, n.storage_units.carrier]).sum(),
-                               # store_caps.loc[year][n.stores.carrier!="load"].groupby([n.stores.bus.str[:5], n.stores.carrier]).sum(),
-                               link_caps.loc[year][n.links.carrier!="DC"].groupby([n.links.bus1.str[:5], n.links.carrier]).sum()
+        bus_sizes = pd.concat((generator_caps.loc[year][n.generators.carrier!="load"].groupby([n.generators.bus, n.generators.carrier]).sum(**agg_group_kwargs),
+                               storage_caps.loc[year][n.storage_units.carrier!="load"].groupby([n.storage_units.bus, n.storage_units.carrier]).sum(**agg_group_kwargs),
+                               # store_caps.loc[year][n.stores.carrier!="load"].groupby([n.stores.bus.str[:5], n.stores.carrier]).sum(**agg_group_kwargs),
+                               link_caps.loc[year][n.links.carrier!="DC"].groupby([n.links.bus1.str[:5], n.links.carrier]).sum(**agg_group_kwargs)
                                ))
         line_widths_exp = dict(Line=line_caps.loc[year], Link=link_caps.loc[year,n.links[n.links.carrier=="DC"].index])
         line_widths_cur = dict(Line=n.lines.s_nom_min, Link=n.links.loc[n.links[n.links.carrier=="DC"].index, "p_nom_min"])
