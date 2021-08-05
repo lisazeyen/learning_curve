@@ -394,7 +394,7 @@ def replace_capital_cost_with_learning(n):
                                                            initial_cost.loc[x.index],
                                                            initial_capacity.loc[x.index])
                                 , axis=1)
-                         .fillna(method="ffill").groupby(level=0).first())
+                         .fillna(method="ffill").groupby(level=0).first(**agg_group_kwargs))
 
 
     for c, attr in nominal_attrs.items():
@@ -460,7 +460,7 @@ def define_learning_binary_constraint(n, snapshots):
     # get learning binaries
     learning = get_var(n, c, attr)
     # (1) sum over all line segments
-    lhs = linexpr((1, learning)).groupby(level=0, axis=1).sum().reindex(columns=learn_i)
+    lhs = linexpr((1, learning)).groupby(level=0, axis=1).sum(**agg_group_kwargs).reindex(columns=learn_i)
     # define constraint to always select just on line segment
     define_constraints(n, lhs, '=', 1, 'Carrier', 'select_segment')
 
@@ -548,7 +548,7 @@ def define_cumulative_capacity(n, x_low, x_high, investments, learn_i):
     # capacity at each line segment
     xs = get_var(n, c, "xs")
     # sum over all line segments (lambda) = cumulative installed capacity
-    lhs = linexpr((1, xs)).groupby(level=0, axis=1).sum().reindex(columns=cum_cap.columns)
+    lhs = linexpr((1, xs)).groupby(level=0, axis=1).sum(**agg_group_kwargs).reindex(columns=cum_cap.columns)
 
     lhs += linexpr((-1, cum_cap))
     define_constraints(n, lhs, '=', 0, 'Carrier', 'cum_cap_definition')
@@ -583,8 +583,8 @@ def define_capacity_per_period(n, investments, multi_i, learn_i, points,
     x_lb = define_bounds(points, "x_fit", "lower", investments, segments).reindex(columns=learn_i, level=0)
     x_ub = define_bounds(points, "x_fit", "upper", investments, segments).reindex(columns=learn_i, level=0)
     # maximum new (local) installable capacity
-    cap_upper = (x_ub.groupby(level=0, axis=1).max()
-                 - x_lb.groupby(level=0, axis=1).min()).reindex(columns=learn_i).mul(global_factor)
+    cap_upper = (x_ub.groupby(level=0, axis=1).max(**agg_group_kwargs)
+                 - x_lb.groupby(level=0, axis=1).min(**agg_group_kwargs)).reindex(columns=learn_i).mul(global_factor)
     # define variable for new installed capacity per period
     cap_per_period = define_variables(n, 0, np.inf, #cap_upper,
                                       c,
@@ -641,8 +641,8 @@ def define_cumulative_cost(n, points, investments, segments, learn_i):
     y_lb = define_bounds(points, "y_fit", "lower", investments, segments)
     y_ub = define_bounds(points, "y_fit", "upper", investments, segments)
 
-    cum_cost_min = y_lb.groupby(level=0, axis=1).min().reindex(learn_i, axis=1)
-    cum_cost_max = y_ub.groupby(level=0, axis=1).max().reindex(learn_i, axis=1)
+    cum_cost_min = y_lb.groupby(level=0, axis=1).min(**agg_group_kwargs).reindex(learn_i, axis=1)
+    cum_cost_max = y_ub.groupby(level=0, axis=1).max(**agg_group_kwargs).reindex(learn_i, axis=1)
 
     cum_cost = define_variables(n, cum_cost_min, cum_cost_max, c,
                             "cumulative_cost",
@@ -665,7 +665,7 @@ def define_cumulative_cost(n, points, investments, segments, learn_i):
 
     # according to Barrettro p.65 eq. (14) ---
     lhs = linexpr((y_intercept_t, learning),
-                  (slope_t, xs)).groupby(level=0, axis=1).sum().reindex(learn_i,axis=1)
+                  (slope_t, xs)).groupby(level=0, axis=1).sum(**agg_group_kwargs).reindex(learn_i,axis=1)
 
     lhs += linexpr((-1, cum_cost.reindex(lhs.columns,axis=1)))
 
@@ -694,8 +694,8 @@ def define_cost_per_period(n, points, investments, segments, learn_i):
     # bounds  --------------------------------------
     y_lb = define_bounds(points, "y_fit", "lower", investments, segments)
     y_ub = define_bounds(points, "y_fit", "upper", investments, segments)
-    inv_upper = (y_ub.groupby(level=0, axis=1).max()
-                 - y_lb.groupby(level=0, axis=1).min()).mul(global_factor).reindex(learn_i,axis=1)
+    inv_upper = (y_ub.groupby(level=0, axis=1).max(**agg_group_kwargs)
+                 - y_lb.groupby(level=0, axis=1).min(**agg_group_kwargs)).mul(global_factor).reindex(learn_i,axis=1)
 
     # define variable for investment per period in technology ---------------
     inv = define_variables(n, 0, np.inf, # inv_upper,
@@ -709,7 +709,7 @@ def define_cost_per_period(n, points, investments, segments, learn_i):
     lhs.iloc[1:] += linexpr((-1, cum_cost.shift().dropna()))
 
     rhs = pd.DataFrame(0.,index=investments, columns=learn_i)
-    rhs.iloc[0] = y_lb.groupby(level=0,axis=1).min().min().reindex(learn_i)
+    rhs.iloc[0] = y_lb.groupby(level=0,axis=1).min(**agg_group_kwargs).min().reindex(learn_i)
 
     define_constraints(n, lhs, '=', rhs, 'Carrier', 'inv_per_period')
 
