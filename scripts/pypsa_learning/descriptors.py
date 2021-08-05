@@ -376,10 +376,10 @@ def get_bounds_pu(n, c, sns, index=slice(None), attr=None):
 
     # set to zero if not active
     if isinstance(sns, pd.MultiIndex):
-        for inv_p in sns.levels[0]:
-            max_pu.loc[inv_p][max_pu.columns[~get_active_assets(n,c,inv_p,sns)]] = 0
-            min_pu.loc[inv_p][max_pu.columns[~get_active_assets(n,c,inv_p,sns)]] = 0
-
+        active = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
+                  for inv_p in sns.levels[0]], axis=1).astype(int)
+        max_pu = max_pu.mul(active.T.reindex(sns, level=0))
+        min_pu = min_pu.mul(active.T.reindex(sns, level=0))
 
     return min_pu[index], max_pu[index]
 
