@@ -170,7 +170,7 @@ def cluster_network(n, years):
 def select_cts(n, years):
     """Cluster network n to network m with representative countries."""
     cluster_regions = {"GB":"UK"}
-    countries = ["DE", "FR"] #, "GB", "ES", "DK", "IT", "NO", "CH"]
+    countries = snakemake.config["select_cts"]
     logger.info("Consider only the following countries {}.".format(countries))
     assign_location(n)
     # clustered network m
@@ -543,6 +543,32 @@ def add_capacity_constraint(n, snapshots):
 
     define_constraints(n, lhs, ">=", rhs, 'GlobalConstraint', 'min_cap')
 
+
+def add_retrofit_gas_boilers_constraint(n, snapshots):
+    """Allow retrofitting of existing gas boilers to H2 boilers"""
+    logger.info("Add constraint for retrofitting gas boilers to H2 boilers.")
+    c, attr = 'Link', 'p'
+
+    h2_i = n.df(c)[n.df(c).carrier.str.contains("H2 boiler")].index
+    gas_boiler_i = n.df(c)[n.df(c).carrier.str.contains("gas boiler")
+                           & n.df(c).p_nom_extendable].index
+
+    # TODO
+    n.df(c).loc[h2_i, "capital_cost"] = 100.
+
+    h2_p = get_var(n,c,attr)[h2_i]
+    gas_boiler_p = get_var(n,c,attr)[gas_boiler_i]
+
+    gas_boiler_cap = get_var(n,c,"p_nom").loc[gas_boiler_i]
+    gas_boiler_cap_t = expand_series(gas_boiler_cap, snapshots).T
+
+
+    lhs = linexpr((-1, h2_p),
+                  (1, gas_boiler_cap_t.values),
+                  (-1, gas_boiler_p.values))
+    rhs = 0.
+    define_constraints(n, lhs, ">=", rhs, 'Link', 'retro_gasboiler')
+
 # --------------------------------------------------------------------
 def prepare_network(n, solve_opts=None):
     """Add solving options to the network before calling the lopf.
@@ -562,6 +588,7 @@ def prepare_network(n, solve_opts=None):
             add_learning(n, snapshots)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
+            add_retrofit_gas_boilers_constraint(n, snapshots)
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = True
@@ -570,6 +597,7 @@ def prepare_network(n, solve_opts=None):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n,snapshots)
+            add_retrofit_gas_boilers_constraint(n, snapshots)
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = False
@@ -630,7 +658,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="CO2L-146sn-learnsolarp0",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0",
             clusters="37",
         )
 
