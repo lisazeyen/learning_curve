@@ -689,7 +689,10 @@ if __name__ == "__main__":
     # set max growth for renewables
     if snakemake.config["limit_growth"]:
         n = set_max_growth(n)
-
+    # TODO
+    # extend lifetime of nuclear power plants to 60 years
+    nuclear_i = n.links[n.links.carrier=="nuclear"].index
+    n.links.loc[nuclear_i, "lifetime"] = 60.
     # solve network
     logging.basicConfig(filename=snakemake.log.python,
                         level=snakemake.config['logging']['level'])
