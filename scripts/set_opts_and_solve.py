@@ -478,6 +478,7 @@ def add_battery_constraints(n):
 
 def add_carbon_neutral_constraint(n, snapshots):
     glcs = n.global_constraints.query('type == "Co2Neutral"')
+    if glcs.empty: return
     for name, glc in glcs.iterrows():
         rhs = glc.constant
         carattr = glc.carrier_attribute
@@ -629,7 +630,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="146sn-learnsolarp0",
+            sector_opts="CO2L-146sn-learnsolarp0",
             clusters="37",
         )
 
@@ -644,7 +645,7 @@ if __name__ == "__main__":
     if snakemake.config["one_node"]:
         n = cluster_network(n, years)
     # consider only some countries
-    if snakemake.config["select_cts"]:
+    if len(snakemake.config["select_cts"]):
         n = select_cts(n, years)
     # prepare data
     global_capacity, p_nom_max_limit, global_factor = prepare_data()
@@ -654,7 +655,8 @@ if __name__ == "__main__":
     n = set_temporal_aggregation(n, opts)
 
     # carbon emission constraints
-    n = set_carbon_constraints(n)
+    if "Co2L" in opts:
+        n = set_carbon_constraints(n)
 
     # set max growth for renewables
     if snakemake.config["limit_growth"]:

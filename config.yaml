@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-146sn-co2seq1] #Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-learnbatteryp0-learnbatteryxchargerp0-local, Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnbatteryp0-learnbatteryxchargerp0-learnsolarp0-learnonwindp0-co2seq1]
+  sector_opts: [Co2L-146sn, Co2L-146sn-co2seq1] #Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-learnbatteryp0-learnbatteryxchargerp0-local, Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnbatteryp0-learnbatteryxchargerp0-learnsolarp0-learnonwindp0-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
