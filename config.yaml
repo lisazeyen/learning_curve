@@ -14,7 +14,7 @@ countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'F
 # sets technical potential at each bus for renewables
 tech_limit: True
 one_node: True
-select_cts: False
+select_cts: ["DE", "FR", "GB"]
 limit_growth: True
 
 learning_technologies:
