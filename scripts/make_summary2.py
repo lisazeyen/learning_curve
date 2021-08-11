@@ -749,9 +749,12 @@ def make_summaries(networks_dict):
 
     for label, filename in iteritems(networks_dict):
         print(label, filename)
-
-        n = pypsa.Network(filename,
-                          override_component_attrs=override_component_attrs)
+        try:
+            n = pypsa.Network(filename,
+                              override_component_attrs=override_component_attrs)
+        except OSError:
+            print(label, " not solved yet.")
+            # del networks_dict[label]
 
 
         assign_carriers(n)
