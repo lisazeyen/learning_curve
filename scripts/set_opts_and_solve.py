@@ -330,6 +330,9 @@ def set_scenario_opts(n, opts):
                     n.carriers.loc["solar", "max_capacity"] =  3e6/factor
                 if tech=="onwind":
                     n.carriers.loc["onwind", "max_capacity"] = 3e6/factor
+        if "fcev" in o:
+            fcev_fraction = float(o.replace("fcev", ""))/100
+            n = adjust_land_transport_share(n, fcev_fraction)
 
         if "co2seq" in o:
             factor = float(o.replace("co2seq", ""))
@@ -460,6 +463,43 @@ def set_max_growth(n):
     n.carriers.loc[['offwind-ac', 'offwind-dc'], "max_growth"] = 15 * 1e3# 8.75 * 1e3
 
     return n
+
+
+def adjust_land_transport_share(n, fcev_fraction=0.4):
+    """Set shares of FCEV and EV.
+
+    Redefines share of land transport for fuel cell cares (FCEV) and electric
+    vehices (EV). This function is only for testing and will be removed later.
+    """
+    logger.info("Change fuel cell share in land transport to {}".format(fcev_fraction))
+
+    # default land transport assumptions
+    default_share = pd.DataFrame(np.array([[0,0.05,0.1,0.15],
+                                  [0,0.25, 0.6,0.85]]).T,
+                               index=[2020,2030,2040,2050],
+                               columns=["land_transport_fuel_cell_share",
+                                        "land_transport_electric_share"])
+
+    new_share = pd.concat([default_share.sum(axis=1) * fcev_fraction,
+                           default_share.sum(axis=1) * (1-fcev_fraction)],
+                          axis=1)
+    new_share.columns = default_share.columns
+
+    factor = new_share.div(default_share).fillna(0.)
+
+    # adjust to new shares
+    to_change = [("Load", "p_set", "land transport EV", "land_transport_electric_share"),
+                 ("Link", "p_nom", "BEV charger", "land_transport_electric_share"),
+                 ("Link", "p_nom", "V2G", "land_transport_electric_share"),
+                 ("Store", "e_nom", "battery storage", "land_transport_electric_share"),
+                 ("Load", "p_set", "land transport fuel cell", "land_transport_fuel_cell_share")]
+    for (c, attr, carrier, share_type) in to_change:
+        change_i = n.df(c)[n.df(c).carrier==carrier].index
+        if c!= "Load":
+            n.df(c).loc[change_i, attr] *= n.df(c).loc[change_i, "build_year"].map(factor[share_type])
+        else:
+            load_w = factor[share_type].reindex(n.snapshots, level=0)
+            n.pnl(c)["p_set"][change_i] = n.pnl(c)["p_set"][change_i].mul(load_w, axis=0)
 
 
 # constraints ---------------------------------------------------------------
@@ -693,6 +733,7 @@ if __name__ == "__main__":
     # extend lifetime of nuclear power plants to 60 years
     nuclear_i = n.links[n.links.carrier=="nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.
+
     # solve network
     logging.basicConfig(filename=snakemake.log.python,
                         level=snakemake.config['logging']['level'])
