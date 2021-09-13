@@ -777,7 +777,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnbatteryp0",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0",
             clusters="37",
         )
 
