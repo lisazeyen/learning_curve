@@ -10,3 +10,4 @@ max_capacity,float,MW,0,"Only considered for technology learning, maximum instal
 global_factor,float,per unit,1,"Defines if global or local technology learning is applied, 1=local learning",Input (optional)
 bus,string,n/a,n/a,defines bus for technical limit constraint,Input (optional)
 max_growth,float,MW,inf,maximum new installed capacity per investment period,Input (optional)
+min_growth,float,MW,0,minimum new installed capacity per investment period,Input (optional)

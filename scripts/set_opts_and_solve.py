@@ -228,8 +228,74 @@ def select_cts(n, years):
     # drop old global constraints
     m.global_constraints.drop(m.global_constraints.index, inplace=True)
 
-    return m
+    # components which are previously for all countries ---------------------
+    # TODO rename n -> m
+    # land transport oil demand and emissions ###
+    transport = pd.read_csv(snakemake.input.transport, index_col=0,
+                            parse_dates=True)
+    buses = n.buses[n.buses.country.isin(countries) & (n.buses.carrier=="AC")].index
+    share_of_total = transport[buses].sum(axis=1) / transport.sum(axis=1)
+    land_transport_carriers = ["land transport oil", "land transport oil emissions"]
+    land_transport_i = m.loads[m.loads.carrier.isin(land_transport_carriers)].index
+    m.loads_t.p_set[land_transport_i] = (n.loads_t.p_set[land_transport_i]
+                                         .mul(share_of_total.reindex(n.snapshots,level=1), axis=0))
+    # biomass potentials ###
+    biomass_potentials = pd.read_csv(snakemake.input.biomass_potentials, index_col=0)
+    share_of_total = biomass_potentials.loc[countries].sum()/biomass_potentials.sum()
 
+    biogas_i = n.stores[n.stores.bus=="EU biogas"].index
+    m.stores.loc[biogas_i, ["e_nom", "e_initial"]] = n.stores.loc[biogas_i, ["e_nom", "e_initial"]].mul(share_of_total["biogas"])
+
+    biomass_i = n.stores[n.stores.bus=="EU solid biomass"].index
+    m.stores.loc[biomass_i, ["e_nom", "e_initial"]] = n.stores.loc[biomass_i, ["e_nom", "e_initial"]].mul(share_of_total["biogas"])
+
+    # industrial demand ##
+    industrial_demand = pd.read_csv(snakemake.input.industrial_demand, index_col=0)
+    factor= biomass_potentials.loc[countries, "solid biomass"].sum() / industrial_demand["solid biomass"].loc[buses].sum()
+    if factor>1:
+        logger.warning("Solid biomass demand of industry of selected countries"
+                       " is larger than  solid biomass potential. Increasing "
+                       "biomass potentials to cover industry demand.")
+        m.stores.loc[biomass_i, ["e_nom", "e_initial"]] *= factor
+    # soild biomass for industry
+    share_of_total = (industrial_demand["solid biomass"].loc[buses].sum()
+                      / industrial_demand["solid biomass"].sum())
+    m.loads_t.p_set["solid biomass for industry"] = n.loads_t.p_set["solid biomass for industry"] * share_of_total
+    # gas for industry
+    share_of_total = (industrial_demand["methane"].loc[buses].sum()
+                      / industrial_demand["methane"].sum())
+    m.loads_t.p_set["gas for industry"] =  n.loads_t.p_set["gas for industry"]  * share_of_total
+    # naphta for industry
+    share_of_total = (industrial_demand["naphtha"].loc[buses].sum()
+                      / industrial_demand["naphtha"].sum())
+    m.loads_t.p_set["naphtha for industry"] =  n.loads_t.p_set["naphtha for industry"]  * share_of_total
+
+    # shipping ###
+    all_navigation = ["total international navigation", "total domestic navigation"]
+    nodal_energy_totals = pd.read_csv(snakemake.input.nodal_energy_totals, index_col=0)
+    share_of_total = (nodal_energy_totals.loc[buses, all_navigation].sum().sum()
+                      / nodal_energy_totals[ all_navigation].sum().sum())
+    m.loads_t.p_set["shipping oil emissions"] = n.loads_t.p_set["shipping oil emissions"] * share_of_total
+
+    # aviation
+    all_aviation = ["total international aviation", "total domestic aviation"]
+    share_of_total = (nodal_energy_totals.loc[buses, all_aviation].sum().sum()
+             / nodal_energy_totals[all_aviation].sum().sum())
+    m.loads_t.p_set["kerosene for aviation"] = n.loads_t.p_set["kerosene for aviation"] * share_of_total
+
+
+    # oil emissions ##
+    co2_release = ["naphtha for industry", "kerosene for aviation"]
+    co2 = (m.loads_t.p_set[co2_release].sum(axis=1) * 0.27
+           - (industrial_demand.loc[buses, "process emission from feedstock"].sum() / 1e6 / 8760))
+    m.loads_t.p_set["oil emissions"] = -co2
+
+    # process emissions ##
+    share_of_total = (industrial_demand.loc[buses,["process emission", "process emission from feedstock"]].sum().sum()
+                      / industrial_demand[["process emission", "process emission from feedstock"]].sum().sum())
+    m.loads_t.p_set["process emissions"] = n.loads_t.p_set["process emissions"] * share_of_total
+
+    return m
 
 def assign_location(n):
     """Assign locaion to buses, one port components."""
@@ -464,6 +530,17 @@ def set_max_growth(n):
 
     return n
 
+def set_min_growth(n):
+    """Limit build rate of renewables."""
+    logger.info("set minimum growth rate of renewables.")
+    # solar max grow so far 28 GW in Europe https://www.iea.org/reports/renewables-2020/solar-pv
+    n.carriers.loc["solar", "min_growth"] = 20 * 1e3#70 * 1e3
+    # onshore max grow so far 16 GW in Europe https://www.iea.org/reports/renewables-2020/wind
+    n.carriers.loc["onwind", "min_growth"] = 10 * 1e3 # 40 * 1e3
+    # offshore max grow so far 3.5 GW in Europe https://windeurope.org/about-wind/statistics/offshore/european-offshore-wind-industry-key-trends-statistics-2019/
+    n.carriers.loc[['offwind-ac', 'offwind-dc'], "min_growth"] = 1 * 1e3# 8.75 * 1e3
+
+    return n
 
 def adjust_land_transport_share(n, fcev_fraction=0.4):
     """Set shares of FCEV and EV.
@@ -500,6 +577,8 @@ def adjust_land_transport_share(n, fcev_fraction=0.4):
         else:
             load_w = factor[share_type].reindex(n.snapshots, level=0)
             n.pnl(c)["p_set"][change_i] = n.pnl(c)["p_set"][change_i].mul(load_w, axis=0)
+
+    return n
 
 
 # constraints ---------------------------------------------------------------
@@ -698,7 +777,7 @@ if __name__ == "__main__":
         from _helpers import mock_snakemake
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnbatteryp0",
             clusters="37",
         )
 
@@ -729,10 +808,20 @@ if __name__ == "__main__":
     # set max growth for renewables
     if snakemake.config["limit_growth"]:
         n = set_max_growth(n)
+
+    # set min growth for renewables
+    if snakemake.config["limit_growth_lb"]:
+        n = set_min_growth(n)
+
     # TODO
     # extend lifetime of nuclear power plants to 60 years
     nuclear_i = n.links[n.links.carrier=="nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.
+    # TODO
+    bev_dsm_i = n.stores[n.stores.carrier=="battery storage"].index
+    n.stores.loc[bev_dsm_i, "e_nom_max"] = n.stores.loc[bev_dsm_i, "e_nom"]
+    n.stores.loc[bev_dsm_i, "e_nom_extendable"] = True
+    n.stores.loc[bev_dsm_i, "carrier"] = "battery"
 
     # solve network
     logging.basicConfig(filename=snakemake.log.python,

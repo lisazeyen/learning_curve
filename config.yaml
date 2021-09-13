@@ -1,4 +1,4 @@
-run: "test_new_pandas"
+run: "test_min_growth"
 
 logging:
   level: INFO
@@ -13,9 +13,10 @@ scenario:
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
-one_node: True
+one_node: False
 select_cts: ["DE", "FR", "GB"]
 limit_growth: True
+limit_growth_lb: True
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc

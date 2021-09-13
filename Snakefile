@@ -41,6 +41,10 @@ rule set_opts_and_solve:
         config="results/"+ config['run'] + '/configs/config.yaml',
         global_capacity="data/global_capacities.csv",
         local_capacity="data/local_capacities.csv",
+        transport="data/transport/transport.csv",
+        biomass_potentials='data/biomass_potentials.csv',
+        industrial_demand="data/industrial_demand.csv",
+        nodal_energy_totals="data/nodal_energy_totals.csv",
     output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc"
     shadow: "shallow"
     log:

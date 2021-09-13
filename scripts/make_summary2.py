@@ -754,6 +754,7 @@ def make_summaries(networks_dict):
                               override_component_attrs=override_component_attrs)
         except OSError:
             print(label, " not solved yet.")
+            continue
             # del networks_dict[label]
 
 
@@ -769,6 +770,7 @@ def make_summaries(networks_dict):
 def to_csv(df):
 
     for key in df:
+        df[key]=df[key].apply(lambda x: pd.to_numeric(x))
         df[key].to_csv(snakemake.output[key])
 
 #%%

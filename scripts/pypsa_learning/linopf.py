@@ -82,7 +82,24 @@ def define_growth_limit(n, snapshots, c, attr):
     rhs = (expand_series(n.carriers["max_growth"].reindex(lhs.columns).fillna(np.inf), investments)
            .mul(n.investment_period_weightings.time_weightings, axis=1).T)
 
-    define_constraints(n, lhs, '<=', rhs, 'Carrier', 'growth_limit_{}'.format(c))
+    define_constraints(n, lhs, '<=', rhs, 'Carrier', 'growth_limit_ub_{}'.format(c))
+
+    with_limit = n.carriers[n.carriers.min_growth!=0].index
+    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i,"carrier"].isin(with_limit)].index
+    if limit_i.empty: return
+    # active assets
+    active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
+                      for inv_p in investments], axis=1).astype(int).loc[limit_i]
+    # new build assets in investment period
+    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(-1,0)
+
+    caps = expand_series(get_var(n, c, attr).loc[limit_i], investments)
+
+    lhs = linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
+    rhs = (expand_series(n.carriers["min_growth"].reindex(lhs.columns).fillna(np.inf), investments)
+           .mul(n.investment_period_weightings.time_weightings, axis=1).T)
+
+    define_constraints(n, lhs, '>=', rhs, 'Carrier', 'growth_limit_lb_{}'.format(c))
 
 
 def define_nominal_for_extendable_variables(n, c, attr):

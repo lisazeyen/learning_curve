@@ -811,6 +811,7 @@ def define_learning_objective(n, sns):
     # investment
     # get carriers with learning
     learn_i = n.carriers[n.carriers.learning_rate!=0].index
+    breakpoint()
     for c, attr in nominal_attrs.items():
         ext_i = get_extendable_i(n, c)
         if "carrier" not in n.df(c) or n.df(c).empty: continue
