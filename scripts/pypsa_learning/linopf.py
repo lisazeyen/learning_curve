@@ -19,17 +19,39 @@ Originally retrieved from nomopyomo ( -> 'no more Pyomo').
 """
 
 
-from .pf import (_as_snapshots, get_switchable_as_dense as get_as_dense)
-from .descriptors import (get_bounds_pu, get_extendable_i, get_non_extendable_i,
-                          expand_series, nominal_attrs, additional_linkports, Dict,
-                          get_active_assets, snapshot_consistency)
+from .pf import _as_snapshots, get_switchable_as_dense as get_as_dense
+from .descriptors import (
+    get_bounds_pu,
+    get_extendable_i,
+    get_non_extendable_i,
+    expand_series,
+    nominal_attrs,
+    additional_linkports,
+    Dict,
+    get_active_assets,
+    snapshot_consistency,
+)
 
-from .linopt import (linexpr, write_bound, write_constraint, write_objective,
-                     set_conref, set_varref, get_con, get_var, join_exprs,
-                     run_and_read_cbc, run_and_read_gurobi, run_and_read_glpk,
-                     run_and_read_cplex, run_and_read_xpress,
-                     define_constraints, define_variables, define_binaries,
-                     align_with_static_component)
+from .linopt import (
+    linexpr,
+    write_bound,
+    write_constraint,
+    write_objective,
+    set_conref,
+    set_varref,
+    get_con,
+    get_var,
+    join_exprs,
+    run_and_read_cbc,
+    run_and_read_gurobi,
+    run_and_read_glpk,
+    run_and_read_cplex,
+    run_and_read_xpress,
+    define_constraints,
+    define_variables,
+    define_binaries,
+    align_with_static_component,
+)
 
 from .learning import get_linear_interpolation_points, get_slope
 
@@ -41,14 +63,18 @@ import gc, time, os, re, shutil
 from tempfile import mkstemp
 
 from distutils.version import LooseVersion
+
 pd_version = LooseVersion(pd.__version__)
 agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-lookup = pd.read_csv(os.path.join(os.path.dirname(__file__), 'variables.csv'),
-                     index_col=['component', 'variable'])
+lookup = pd.read_csv(
+    os.path.join(os.path.dirname(__file__), "variables.csv"),
+    index_col=["component", "variable"],
+)
 
 #%%
 def define_growth_limit(n, snapshots, c, attr):
@@ -62,44 +88,82 @@ def define_growth_limit(n, snapshots, c, attr):
     attr : str
            name of the variable, e.g. 'p_nom'
     """
-    investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.]
-
+    investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.0]
 
     ext_i = get_extendable_i(n, c)
-    if "carrier" not in n.df(c) or n.df(c).empty: return
-    with_limit = n.carriers[n.carriers.max_growth!=np.inf].index
-    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i,"carrier"].isin(with_limit)].index
-    if limit_i.empty: return
+    if "carrier" not in n.df(c) or n.df(c).empty:
+        return
+    with_limit = n.carriers[n.carriers.max_growth != np.inf].index
+    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i, "carrier"].isin(with_limit)].index
+    if limit_i.empty:
+        return
     # active assets
-    active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
-                      for inv_p in investments], axis=1).astype(int).loc[limit_i]
+    active = (
+        pd.concat(
+            [
+                get_active_assets(n, c, inv_p, snapshots).rename(inv_p)
+                for inv_p in investments
+            ],
+            axis=1,
+        )
+        .astype(int)
+        .loc[limit_i]
+    )
     # new build assets in investment period
-    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(-1,0)
+    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(
+        -1, 0
+    )
 
     caps = expand_series(get_var(n, c, attr).loc[limit_i], investments)
 
-    lhs = linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
-    rhs = (expand_series(n.carriers["max_growth"].reindex(lhs.columns).fillna(np.inf), investments)
-           .mul(n.investment_period_weightings.time_weightings, axis=1).T)
+    lhs = (
+        linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
+    )
+    rhs = (
+        expand_series(
+            n.carriers["max_growth"].reindex(lhs.columns).fillna(np.inf), investments
+        )
+        .mul(n.investment_period_weightings.time_weightings, axis=1)
+        .T
+    )
 
-    define_constraints(n, lhs, '<=', rhs, 'Carrier', 'growth_limit_ub_{}'.format(c))
+    define_constraints(n, lhs, "<=", rhs, "Carrier", "growth_limit_ub_{}".format(c))
 
-    with_limit = n.carriers[n.carriers.min_growth!=0].index
-    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i,"carrier"].isin(with_limit)].index
-    if limit_i.empty: return
+    with_limit = n.carriers[n.carriers.min_growth != 0].index
+    limit_i = n.df(c).loc[ext_i][n.df(c).loc[ext_i, "carrier"].isin(with_limit)].index
+    if limit_i.empty:
+        return
     # active assets
-    active = pd.concat([get_active_assets(n,c,inv_p,snapshots).rename(inv_p)
-                      for inv_p in investments], axis=1).astype(int).loc[limit_i]
+    active = (
+        pd.concat(
+            [
+                get_active_assets(n, c, inv_p, snapshots).rename(inv_p)
+                for inv_p in investments
+            ],
+            axis=1,
+        )
+        .astype(int)
+        .loc[limit_i]
+    )
     # new build assets in investment period
-    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(-1,0)
+    new_build = active.apply(lambda x: x.diff().fillna(x.iloc[0]), axis=1).replace(
+        -1, 0
+    )
 
     caps = expand_series(get_var(n, c, attr).loc[limit_i], investments)
 
-    lhs = linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
-    rhs = (expand_series(n.carriers["min_growth"].reindex(lhs.columns).fillna(np.inf), investments)
-           .mul(n.investment_period_weightings.time_weightings, axis=1).T)
+    lhs = (
+        linexpr((new_build, caps)).groupby(n.df(c)["carrier"]).sum(**agg_group_kwargs).T
+    )
+    rhs = (
+        expand_series(
+            n.carriers["min_growth"].reindex(lhs.columns).fillna(np.inf), investments
+        )
+        .mul(n.investment_period_weightings.time_weightings, axis=1)
+        .T
+    )
 
-    define_constraints(n, lhs, '>=', rhs, 'Carrier', 'growth_limit_lb_{}'.format(c))
+    define_constraints(n, lhs, ">=", rhs, "Carrier", "growth_limit_lb_{}".format(c))
 
 
 def define_nominal_for_extendable_variables(n, c, attr):
@@ -117,9 +181,10 @@ def define_nominal_for_extendable_variables(n, c, attr):
 
     """
     ext_i = get_extendable_i(n, c)
-    if ext_i.empty: return
-    lower = n.df(c)[attr+'_min'][ext_i]
-    upper = n.df(c)[attr+'_max'][ext_i]
+    if ext_i.empty:
+        return
+    lower = n.df(c)[attr + "_min"][ext_i]
+    upper = n.df(c)[attr + "_max"][ext_i]
     define_variables(n, lower, upper, c, attr)
 
 
@@ -138,10 +203,11 @@ def define_dispatch_for_extendable_and_committable_variables(n, sns, c, attr):
 
     """
     ext_i = get_extendable_i(n, c)
-    if c == 'Generator':
-        ext_i = ext_i.union(n.generators.query('committable').index)
-    if ext_i.empty: return
-    define_variables(n, -inf, inf, c, attr, axes=[sns, ext_i], spec='ext')
+    if c == "Generator":
+        ext_i = ext_i.union(n.generators.query("committable").index)
+    if ext_i.empty:
+        return
+    define_variables(n, -inf, inf, c, attr, axes=[sns, ext_i], spec="ext")
 
 
 def define_dispatch_for_non_extendable_variables(n, sns, c, attr):
@@ -159,18 +225,19 @@ def define_dispatch_for_non_extendable_variables(n, sns, c, attr):
 
     """
     fix_i = get_non_extendable_i(n, c)
-    if c == 'Generator':
-        fix_i = fix_i.difference(n.generators.query('committable').index)
-    if fix_i.empty: return
+    if c == "Generator":
+        fix_i = fix_i.difference(n.generators.query("committable").index)
+    if fix_i.empty:
+        return
     nominal_fix = n.df(c)[nominal_attrs[c]][fix_i]
     min_pu, max_pu = get_bounds_pu(n, c, sns, fix_i, attr)
     lower = min_pu.mul(nominal_fix)
     upper = max_pu.mul(nominal_fix)
     axes = [sns, fix_i]
-    dispatch = define_variables(n, -inf, inf, c, attr, axes=axes, spec='non_ext')
+    dispatch = define_variables(n, -inf, inf, c, attr, axes=axes, spec="non_ext")
     dispatch = linexpr((1, dispatch))
-    define_constraints(n, dispatch, '>=', lower, c, 'mu_lower', spec='non_ext')
-    define_constraints(n, dispatch, '<=', upper, c, 'mu_upper', spec='non_ext')
+    define_constraints(n, dispatch, ">=", lower, c, "mu_lower", spec="non_ext")
+    define_constraints(n, dispatch, "<=", upper, c, "mu_upper", spec="non_ext")
 
 
 def define_dispatch_for_extendable_constraints(n, sns, c, attr):
@@ -188,20 +255,19 @@ def define_dispatch_for_extendable_constraints(n, sns, c, attr):
 
     """
     ext_i = get_extendable_i(n, c)
-    if ext_i.empty: return
+    if ext_i.empty:
+        return
     min_pu, max_pu = get_bounds_pu(n, c, sns, ext_i, attr)
     operational_ext_v = get_var(n, c, attr)[ext_i]
     nominal_v = get_var(n, c, nominal_attrs[c])[ext_i]
 
     rhs = 0
 
-    lhs, *axes = linexpr((max_pu, nominal_v), (-1, operational_ext_v),
-                         return_axes=True)
-    define_constraints(n, lhs, '>=', rhs, c, 'mu_upper', axes=axes, spec=attr)
+    lhs, *axes = linexpr((max_pu, nominal_v), (-1, operational_ext_v), return_axes=True)
+    define_constraints(n, lhs, ">=", rhs, c, "mu_upper", axes=axes, spec=attr)
 
-    lhs, *axes = linexpr((min_pu, nominal_v), (-1, operational_ext_v),
-                         return_axes=True)
-    define_constraints(n, lhs, '<=', rhs, c, 'mu_lower', axes=axes, spec=attr)
+    lhs, *axes = linexpr((min_pu, nominal_v), (-1, operational_ext_v), return_axes=True)
+    define_constraints(n, lhs, "<=", rhs, c, "mu_lower", axes=axes, spec=attr)
 
 
 def define_fixed_variable_constraints(n, sns, c, attr, pnl=True):
@@ -223,52 +289,58 @@ def define_fixed_variable_constraints(n, sns, c, attr, pnl=True):
     """
 
     if pnl:
-        if attr + '_set' not in n.pnl(c): return
-        fix = n.pnl(c)[attr + '_set'].stack()
-        if fix.empty: return
-        lhs = linexpr((1, get_var(n, c, attr).stack()[fix.index]),
-                      as_pandas=False)
-        constraints = write_constraint(n, lhs, '=', fix).unstack().T
+        if attr + "_set" not in n.pnl(c):
+            return
+        fix = n.pnl(c)[attr + "_set"].stack()
+        if fix.empty:
+            return
+        lhs = linexpr((1, get_var(n, c, attr).stack()[fix.index]), as_pandas=False)
+        constraints = write_constraint(n, lhs, "=", fix).unstack().T
     else:
-        if attr + '_set' not in n.df(c): return
-        fix = n.df(c)[attr + '_set'].dropna()
-        if fix.empty: return
+        if attr + "_set" not in n.df(c):
+            return
+        fix = n.df(c)[attr + "_set"].dropna()
+        if fix.empty:
+            return
         lhs = linexpr((1, get_var(n, c, attr)[fix.index]), as_pandas=False)
-        constraints = write_constraint(n, lhs, '=', fix)
-    set_conref(n, constraints, c, f'mu_{attr}_set')
+        constraints = write_constraint(n, lhs, "=", fix)
+    set_conref(n, constraints, c, f"mu_{attr}_set")
 
 
 def define_generator_status_variables(n, snapshots):
-    com_i = n.generators.query('committable').index
-    ext_i = get_extendable_i(n, 'Generator')
+    com_i = n.generators.query("committable").index
+    ext_i = get_extendable_i(n, "Generator")
     if not (ext_i.intersection(com_i)).empty:
-        logger.warning("The following generators have both investment optimisation"
-        f" and unit commitment:\n\n\t{', '.join((ext_i & com_i))}\n\nCurrently PyPSA cannot "
-        "do both these functions, so PyPSA is choosing investment optimisation "
-        "for these generators.")
+        logger.warning(
+            "The following generators have both investment optimisation"
+            f" and unit commitment:\n\n\t{', '.join((ext_i & com_i))}\n\nCurrently PyPSA cannot "
+            "do both these functions, so PyPSA is choosing investment optimisation "
+            "for these generators."
+        )
         com_i = com_i.difference(ext_i)
-    if com_i.empty: return
-    define_binaries(n, (snapshots, com_i), 'Generator', 'status')
+    if com_i.empty:
+        return
+    define_binaries(n, (snapshots, com_i), "Generator", "status")
 
 
 def define_committable_generator_constraints(n, snapshots):
-    c, attr = 'Generator', 'status'
-    com_i = n.df(c).query('committable and not p_nom_extendable').index
-    if com_i.empty: return
+    c, attr = "Generator", "status"
+    com_i = n.df(c).query("committable and not p_nom_extendable").index
+    if com_i.empty:
+        return
     nominal = n.df(c)[nominal_attrs[c]][com_i]
-    min_pu, max_pu = get_bounds_pu(n, c, snapshots, com_i, 'p')
+    min_pu, max_pu = get_bounds_pu(n, c, snapshots, com_i, "p")
     lower = min_pu.mul(nominal)
     upper = max_pu.mul(nominal)
 
     status = get_var(n, c, attr)
-    p = get_var(n, c, 'p')[com_i]
+    p = get_var(n, c, "p")[com_i]
 
     lhs = linexpr((lower, status), (-1, p))
-    define_constraints(n, lhs, '<=', 0, 'Generators', 'committable_lb')
+    define_constraints(n, lhs, "<=", 0, "Generators", "committable_lb")
 
     lhs = linexpr((upper, status), (-1, p))
-    define_constraints(n, lhs, '>=', 0, 'Generators', 'committable_ub')
-
+    define_constraints(n, lhs, ">=", 0, "Generators", "committable_ub")
 
 
 def define_ramp_limit_constraints(n, sns):
@@ -276,70 +348,77 @@ def define_ramp_limit_constraints(n, sns):
     Defines ramp limits for generators wiht valid ramplimit
 
     """
-    c = 'Generator'
-    rup_i = n.df(c).query('ramp_limit_up == ramp_limit_up').index
-    rdown_i = n.df(c).query('ramp_limit_down == ramp_limit_down').index
+    c = "Generator"
+    rup_i = n.df(c).query("ramp_limit_up == ramp_limit_up").index
+    rdown_i = n.df(c).query("ramp_limit_down == ramp_limit_down").index
     if rup_i.empty & rdown_i.empty:
         return
     fix_i = get_non_extendable_i(n, c)
     ext_i = get_extendable_i(n, c)
-    com_i = n.df(c).query('committable').index.difference(ext_i)
-    p = get_var(n, c, 'p').loc[sns[1:]]
-    p_prev = get_var(n, c, 'p').shift(1).loc[sns[1:]]
+    com_i = n.df(c).query("committable").index.difference(ext_i)
+    p = get_var(n, c, "p").loc[sns[1:]]
+    p_prev = get_var(n, c, "p").shift(1).loc[sns[1:]]
 
     # fix up
     gens_i = rup_i & fix_i
     if not gens_i.empty:
         lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]))
-        rhs = n.df(c).loc[gens_i].eval('ramp_limit_up * p_nom')
-        define_constraints(n, lhs, '<=', rhs,  c, 'mu_ramp_limit_up', spec='nonext.')
+        rhs = n.df(c).loc[gens_i].eval("ramp_limit_up * p_nom")
+        define_constraints(n, lhs, "<=", rhs, c, "mu_ramp_limit_up", spec="nonext.")
 
     # ext up
     gens_i = rup_i & ext_i
     if not gens_i.empty:
-        limit_pu = n.df(c)['ramp_limit_up'][gens_i]
-        p_nom = get_var(n, c, 'p_nom')[gens_i]
+        limit_pu = n.df(c)["ramp_limit_up"][gens_i]
+        p_nom = get_var(n, c, "p_nom")[gens_i]
         lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]), (-limit_pu, p_nom))
-        define_constraints(n, lhs, '<=', 0, c, 'mu_ramp_limit_up', spec='ext.')
+        define_constraints(n, lhs, "<=", 0, c, "mu_ramp_limit_up", spec="ext.")
 
     # com up
     gens_i = rup_i & com_i
     if not gens_i.empty:
-        limit_start = n.df(c).loc[gens_i].eval('ramp_limit_start_up * p_nom')
-        limit_up = n.df(c).loc[gens_i].eval('ramp_limit_up * p_nom')
-        status = get_var(n, c, 'status').loc[sns[1:], gens_i]
-        status_prev = get_var(n, c, 'status').shift(1).loc[sns[1:], gens_i]
-        lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]),
-                      (limit_start - limit_up, status_prev),
-                      (- limit_start, status))
-        define_constraints(n, lhs, '<=', 0, c, 'mu_ramp_limit_up', spec='com.')
+        limit_start = n.df(c).loc[gens_i].eval("ramp_limit_start_up * p_nom")
+        limit_up = n.df(c).loc[gens_i].eval("ramp_limit_up * p_nom")
+        status = get_var(n, c, "status").loc[sns[1:], gens_i]
+        status_prev = get_var(n, c, "status").shift(1).loc[sns[1:], gens_i]
+        lhs = linexpr(
+            (1, p[gens_i]),
+            (-1, p_prev[gens_i]),
+            (limit_start - limit_up, status_prev),
+            (-limit_start, status),
+        )
+        define_constraints(n, lhs, "<=", 0, c, "mu_ramp_limit_up", spec="com.")
 
     # fix down
     gens_i = rdown_i & fix_i
     if not gens_i.empty:
         lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]))
-        rhs = n.df(c).loc[gens_i].eval('-1 * ramp_limit_down * p_nom')
-        define_constraints(n, lhs, '>=', rhs, c, 'mu_ramp_limit_down', spec='nonext.')
+        rhs = n.df(c).loc[gens_i].eval("-1 * ramp_limit_down * p_nom")
+        define_constraints(n, lhs, ">=", rhs, c, "mu_ramp_limit_down", spec="nonext.")
 
     # ext down
     gens_i = rdown_i & ext_i
     if not gens_i.empty:
-        limit_pu = n.df(c)['ramp_limit_down'][gens_i]
-        p_nom = get_var(n, c, 'p_nom')[gens_i]
+        limit_pu = n.df(c)["ramp_limit_down"][gens_i]
+        p_nom = get_var(n, c, "p_nom")[gens_i]
         lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]), (limit_pu, p_nom))
-        define_constraints(n, lhs, '>=', 0, c, 'mu_ramp_limit_down', spec='ext.')
+        define_constraints(n, lhs, ">=", 0, c, "mu_ramp_limit_down", spec="ext.")
 
     # com down
     gens_i = rdown_i & com_i
     if not gens_i.empty:
-        limit_shut = n.df(c).loc[gens_i].eval('ramp_limit_shut_down * p_nom')
-        limit_down = n.df(c).loc[gens_i].eval('ramp_limit_down * p_nom')
-        status = get_var(n, c, 'status').loc[sns[1:], gens_i]
-        status_prev = get_var(n, c, 'status').shift(1).loc[sns[1:], gens_i]
-        lhs = linexpr((1, p[gens_i]), (-1, p_prev[gens_i]),
-                      (limit_down - limit_shut, status),
-                      (limit_shut, status_prev))
-        define_constraints(n, lhs, '>=', 0, c, 'mu_ramp_limit_down', spec='com.')
+        limit_shut = n.df(c).loc[gens_i].eval("ramp_limit_shut_down * p_nom")
+        limit_down = n.df(c).loc[gens_i].eval("ramp_limit_down * p_nom")
+        status = get_var(n, c, "status").loc[sns[1:], gens_i]
+        status_prev = get_var(n, c, "status").shift(1).loc[sns[1:], gens_i]
+        lhs = linexpr(
+            (1, p[gens_i]),
+            (-1, p_prev[gens_i]),
+            (limit_down - limit_shut, status),
+            (limit_shut, status_prev),
+        )
+        define_constraints(n, lhs, ">=", 0, c, "mu_ramp_limit_down", spec="com.")
+
 
 def define_nodal_balance_constraints(n, sns):
     """
@@ -347,39 +426,49 @@ def define_nodal_balance_constraints(n, sns):
 
     """
 
-    def bus_injection(c, attr, groupcol='bus', sign=1):
+    def bus_injection(c, attr, groupcol="bus", sign=1):
         # additional sign only necessary for branches in reverse direction
-        if 'sign' in n.df(c):
+        if "sign" in n.df(c):
             sign = sign * n.df(c).sign
         expr = linexpr((sign, get_var(n, c, attr))).rename(columns=n.df(c)[groupcol])
         # drop empty bus2, bus3 if multiline link
-        if c == 'Link':
-            expr.drop(columns='', errors='ignore', inplace=True)
+        if c == "Link":
+            expr.drop(columns="", errors="ignore", inplace=True)
         return expr
 
     # one might reduce this a bit by using n.branches and lookup
-    args = [['Generator', 'p'], ['Store', 'p'], ['StorageUnit', 'p_dispatch'],
-            ['StorageUnit', 'p_store', 'bus', -1], ['Line', 's', 'bus0', -1],
-            ['Line', 's', 'bus1', 1], ['Transformer', 's', 'bus0', -1],
-            ['Transformer', 's', 'bus1', 1], ['Link', 'p', 'bus0', -1],
-            ['Link', 'p', 'bus1', get_as_dense(n, 'Link', 'efficiency', sns)]]
+    args = [
+        ["Generator", "p"],
+        ["Store", "p"],
+        ["StorageUnit", "p_dispatch"],
+        ["StorageUnit", "p_store", "bus", -1],
+        ["Line", "s", "bus0", -1],
+        ["Line", "s", "bus1", 1],
+        ["Transformer", "s", "bus0", -1],
+        ["Transformer", "s", "bus1", 1],
+        ["Link", "p", "bus0", -1],
+        ["Link", "p", "bus1", get_as_dense(n, "Link", "efficiency", sns)],
+    ]
     args = [arg for arg in args if not n.df(arg[0]).empty]
 
     for i in additional_linkports(n):
-        eff = get_as_dense(n, 'Link', f'efficiency{i}', sns)
-        args.append(['Link', 'p', f'bus{i}', eff])
+        eff = get_as_dense(n, "Link", f"efficiency{i}", sns)
+        args.append(["Link", "p", f"bus{i}", eff])
 
-    lhs = (pd.concat([bus_injection(*arg) for arg in args], axis=1)
-           .groupby(axis=1, level=0)
-           .sum(**agg_group_kwargs)
-           .reindex(columns=n.buses.index, fill_value=''))
-    sense = '='
-    rhs = ((- get_as_dense(n, 'Load', 'p_set', sns) * n.loads.sign)
-           .groupby(n.loads.bus, axis=1).sum(**agg_group_kwargs)
-           .reindex(columns=n.buses.index, fill_value=0))
-    define_constraints(n, lhs, sense, rhs, 'Bus', 'marginal_price')
-
-
+    lhs = (
+        pd.concat([bus_injection(*arg) for arg in args], axis=1)
+        .groupby(axis=1, level=0)
+        .sum(**agg_group_kwargs)
+        .reindex(columns=n.buses.index, fill_value="")
+    )
+    sense = "="
+    rhs = (
+        (-get_as_dense(n, "Load", "p_set", sns) * n.loads.sign)
+        .groupby(n.loads.bus, axis=1)
+        .sum(**agg_group_kwargs)
+        .reindex(columns=n.buses.index, fill_value=0)
+    )
+    define_constraints(n, lhs, sense, rhs, "Bus", "marginal_price")
 
 
 def define_kirchhoff_constraints(n, sns):
@@ -388,12 +477,12 @@ def define_kirchhoff_constraints(n, sns):
 
     """
     comps = n.passive_branch_components & set(n.variables.index.levels[0])
-    if len(comps) == 0: return
-    branch_vars = pd.concat({c:get_var(n, c, 's') for c in comps}, axis=1)
-
+    if len(comps) == 0:
+        return
+    branch_vars = pd.concat({c: get_var(n, c, "s") for c in comps}, axis=1)
 
     def cycle_flow(ds):
-        ds = ds[lambda ds: ds!=0.].dropna()
+        ds = ds[lambda ds: ds != 0.0].dropna()
         vals = linexpr((ds, branch_vars[ds.index]), as_pandas=False)
         return vals.sum(1)
 
@@ -407,17 +496,18 @@ def define_kirchhoff_constraints(n, sns):
             if C.empty:
                 continue
             carrier = n.sub_networks.carrier[sub.name]
-            weightings = branches.x_pu_eff if carrier == 'AC' else branches.r_pu_eff
+            weightings = branches.x_pu_eff if carrier == "AC" else branches.r_pu_eff
             C_weighted = 1e5 * C.mul(weightings, axis=0)
             cycle_sum = C_weighted.apply(cycle_flow)
             cycle_sum.set_index(sns, inplace=True)
-            if inv_p!=None:
+            if inv_p != None:
                 cycle_sum = cycle_sum.loc[inv_p]
-            con = write_constraint(n, cycle_sum, '=', 0)
+            con = write_constraint(n, cycle_sum, "=", 0)
             constraints.append(con)
-    if len(constraints) == 0: return
+    if len(constraints) == 0:
+        return
     constraints = pd.concat(constraints, axis=1, ignore_index=True)
-    set_conref(n, constraints, 'SubNetwork', 'mu_kirchhoff_voltage_law')
+    set_conref(n, constraints, "SubNetwork", "mu_kirchhoff_voltage_law")
 
 
 def define_storage_unit_constraints(n, sns, typical_period):
@@ -432,12 +522,13 @@ def define_storage_unit_constraints(n, sns, typical_period):
 
     """
     sus_i = n.storage_units.index
-    if sus_i.empty: return
-    c = 'StorageUnit'
+    if sus_i.empty:
+        return
+    c = "StorageUnit"
     # spillage
-    upper = get_as_dense(n, c, 'inflow', sns).loc[:, lambda df: df.max() > 0]
+    upper = get_as_dense(n, c, "inflow", sns).loc[:, lambda df: df.max() > 0]
     spill = write_bound(n, 0, upper)
-    set_varref(n, spill, 'StorageUnit', 'spill')
+    set_varref(n, spill, "StorageUnit", "spill")
     # create multiindex [time of investment, snapshots]
     if isinstance(sns, pd.MultiIndex):
         sns_with_inv = sns
@@ -445,20 +536,25 @@ def define_storage_unit_constraints(n, sns, typical_period):
         sns_with_inv = pd.MultiIndex.from_product([[0], sns])
 
     # elapsed hours
-    eh = expand_series(n.snapshot_weightings.loc[sns, "store_weightings"], sus_i).reindex(sns_with_inv, level=1)
+    eh = expand_series(
+        n.snapshot_weightings.loc[sns, "store_weightings"], sus_i
+    ).reindex(sns_with_inv, level=1)
     # efficiencies
-    eff_stand = expand_series(1-n.df(c).standing_loss, sns_with_inv).T.pow(eh)
+    eff_stand = expand_series(1 - n.df(c).standing_loss, sns_with_inv).T.pow(eh)
     eff_dispatch = expand_series(n.df(c).efficiency_dispatch, sns_with_inv).T
     eff_store = expand_series(n.df(c).efficiency_store, sns_with_inv).T
 
-    soc = get_var(n, c, 'state_of_charge').reindex(sns_with_inv, level=1)
+    soc = get_var(n, c, "state_of_charge").reindex(sns_with_inv, level=1)
 
     def masked_term(coeff, var, cols):
-        return linexpr((coeff[cols], var[cols]))\
-               .reindex(index=axes[0], columns=axes[1], fill_value='').values
+        return (
+            linexpr((coeff[cols], var[cols]))
+            .reindex(index=axes[0], columns=axes[1], fill_value="")
+            .values
+        )
 
-# ############################################################################
-# ---------- IMPLEMENTATION STORAGE CONSTRAINTS IF TYPICAL DAYS ARE USED ------
+    # ############################################################################
+    # ---------- IMPLEMENTATION STORAGE CONSTRAINTS IF TYPICAL DAYS ARE USED ------
     if typical_period:
         # According to:
         # L. Kotzur et al: 'Time series aggregation for energy system design:
@@ -467,39 +563,46 @@ def define_storage_unit_constraints(n, sns, typical_period):
 
         # (1) intra period constraints -  Kotzur paper eq. 18 -----------------
         # define new variable for state of charge (soc) within typical day (intra period)
-        soc_intra = define_variables(n, -inf, inf, c, "state_of_charge_intra",
-                                     axes=[sns_with_inv, sus_i])
+        soc_intra = define_variables(
+            n, -inf, inf, c, "state_of_charge_intra", axes=[sns_with_inv, sus_i]
+        )
 
         # (a) soc_intra at first hour of each intra period constraint to be zero
-        first_hour = sns.get_level_values(1).isin(n.cluster.first_hour_RepresentativeDay.unique())
+        first_hour = sns.get_level_values(1).isin(
+            n.cluster.first_hour_RepresentativeDay.unique()
+        )
         lhs = linexpr((1, soc_intra.loc[first_hour]))
-        define_constraints(n, lhs, '==', 0, c, 'mu_state_of_charge_intra_first')
+        define_constraints(n, lhs, "==", 0, c, "mu_state_of_charge_intra_first")
 
         # (b) soc_intra(hour+1) = soc_intra(hour) (1-eff) + dt [eff_char * p_charge - eff_discharge * p_discharge ]
         # (1-nu_self * dt) with time step: dt = 1h
-        eff_stand_intra = expand_series(1-n.df(c).standing_loss, sns_with_inv[~first_hour]).T
+        eff_stand_intra = expand_series(
+            1 - n.df(c).standing_loss, sns_with_inv[~first_hour]
+        ).T
         # elapsed hours dt = 1h
-        eh_intra =  expand_series(sns_with_inv[~first_hour], sus_i).fillna(1.)
+        eh_intra = expand_series(sns_with_inv[~first_hour], sus_i).fillna(1.0)
         # soc_intra(hour - 1)
         previous_soc_intra = soc_intra.shift().loc[~first_hour]
 
         # first variables which depend on every snapshot t
-        coeff_var = [(-1, soc_intra)] # SOC_{period, t+1}
+        coeff_var = [(-1, soc_intra)]  # SOC_{period, t+1}
         lhs, *axes = linexpr(*coeff_var, return_axes=True)
 
         #  SOC_{period, t}
         lhs += masked_term(eff_stand_intra, previous_soc_intra, sus_i)
         # -1/nu_discharge * p_dispatch_{period, t}
-        lhs += masked_term(-1/eff_dispatch[~first_hour],
-                           get_var(n, c, 'p_dispatch')[~first_hour],
-                           sus_i)
+        lhs += masked_term(
+            -1 / eff_dispatch[~first_hour],
+            get_var(n, c, "p_dispatch")[~first_hour],
+            sus_i,
+        )
         # nu_charge * p_store_{period, t}
-        lhs += masked_term(eff_store[~first_hour],
-                           get_var(n, c, 'p_store')[~first_hour],
-                           sus_i)
+        lhs += masked_term(
+            eff_store[~first_hour], get_var(n, c, "p_store")[~first_hour], sus_i
+        )
         rhs = 0
 
-        define_constraints(n, lhs, '==', rhs, c, 'mu_state_of_charge_intra')
+        define_constraints(n, lhs, "==", rhs, c, "mu_state_of_charge_intra")
 
         #######################################################################
         # (2) inter period constraints - Kotzur paper eq. 19 ------------------
@@ -511,68 +614,93 @@ def define_storage_unit_constraints(n, sns, typical_period):
         all_periods_i = pd.RangeIndex(len(n.cluster) / hours)
 
         # define new variable for state of charge (soc) between periods (inter)
-        soc_inter = define_variables(n, 0, inf, c, "state_of_charge_inter",
-                             axes=[all_periods_i, sus_i])
+        soc_inter = define_variables(
+            n, 0, inf, c, "state_of_charge_inter", axes=[all_periods_i, sus_i]
+        )
 
         # (a) For the last reperesentive day, the soc_inter is the same as the
         # first day
-        lhs = linexpr((1, soc_inter.iloc[0,:]),
-                      (-1, soc_inter.iloc[-1,:]))
-        define_constraints(n, lhs, '==', 0, c, 'mu_state_of_charge_inter_first')
+        lhs = linexpr((1, soc_inter.iloc[0, :]), (-1, soc_inter.iloc[-1, :]))
+        define_constraints(n, lhs, "==", 0, c, "mu_state_of_charge_inter_first")
 
         # -------------------------------------------------------------------
         # (b) soc_inter = prev_soc_inter (1-eff dt)**hours + SOC_intra(f(i), Ng+1)
 
-
-# #############################################################################
-# ------ no typical periods constraints ---------------------------------------
+    # #############################################################################
+    # ------ no typical periods constraints ---------------------------------------
     else:
-        cyclic_i = n.df(c).query('cyclic_state_of_charge').index
-        noncyclic_i = n.df(c).query('~cyclic_state_of_charge & ~state_of_charge_period').index
-        period_i = n.df(c).query("~cyclic_state_of_charge & state_of_charge_period").index
+        cyclic_i = n.df(c).query("cyclic_state_of_charge").index
+        noncyclic_i = (
+            n.df(c).query("~cyclic_state_of_charge & ~state_of_charge_period").index
+        )
+        period_i = (
+            n.df(c).query("~cyclic_state_of_charge & state_of_charge_period").index
+        )
 
-        active =  pd.concat([get_active_assets(n,c,inv_p,sns_with_inv).rename(inv_p)
-                             for inv_p in sns_with_inv.levels[0]], axis=1).T
-        active_i =  active.astype(int)[period_i]
+        active = pd.concat(
+            [
+                get_active_assets(n, c, inv_p, sns_with_inv).rename(inv_p)
+                for inv_p in sns_with_inv.levels[0]
+            ],
+            axis=1,
+        ).T
+        active_i = active.astype(int)[period_i]
 
         # state of charge at the beginning of each investment period (soc_first_inv)
         # shoud be the same during the lifetime of the storage
-        eff_stand_periodic = ((eff_stand.mul(active_i, level=0)).groupby(level=0)
-                              .shift().apply(lambda x: x.dropna()))
+        eff_stand_periodic = (
+            (eff_stand.mul(active_i, level=0))
+            .groupby(level=0)
+            .shift()
+            .apply(lambda x: x.dropna())
+        )
         previous_soc_periodic = soc.groupby(level=0).shift().dropna()
 
         # cyclic constraint for soc - shift each investment period
         previous_soc_cyclic = soc.groupby(level=0).shift()
         fill_with_last = soc.groupby(level=0).last()
         previous_soc_cyclic = previous_soc_cyclic.combine_first(
-                              previous_soc_cyclic.add(fill_with_last, level=0, fill_value=0))
+            previous_soc_cyclic.add(fill_with_last, level=0, fill_value=0)
+        )
 
-
-
-        coeff_var = [(-1, soc),
-                 (-1/eff_dispatch * eh, get_var(n, c, 'p_dispatch')),
-                 (eff_store * eh, get_var(n, c, 'p_store'))]
+        coeff_var = [
+            (-1, soc),
+            (-1 / eff_dispatch * eh, get_var(n, c, "p_dispatch")),
+            (eff_store * eh, get_var(n, c, "p_store")),
+        ]
 
         lhs, *axes = linexpr(*coeff_var, return_axes=True)
 
-        if ('StorageUnit', 'spill') in n.variables.index:
-            lhs += masked_term(-eh,
-                               get_var(n, c, 'spill').reindex(sns_with_inv, level=1),
-                               spill.columns)
+        if ("StorageUnit", "spill") in n.variables.index:
+            lhs += masked_term(
+                -eh,
+                get_var(n, c, "spill").reindex(sns_with_inv, level=1),
+                spill.columns,
+            )
         lhs += masked_term(eff_stand, previous_soc_cyclic, cyclic_i)
-        lhs += masked_term(eff_stand.loc[sns_with_inv[1:]], soc.shift().loc[sns_with_inv[1:]], noncyclic_i)
+        lhs += masked_term(
+            eff_stand.loc[sns_with_inv[1:]],
+            soc.shift().loc[sns_with_inv[1:]],
+            noncyclic_i,
+        )
         lhs += masked_term(eff_stand_periodic, previous_soc_periodic, period_i)
 
         # rhs consider inflow and initial state of charge
-        rhs = -get_as_dense(n, c, 'inflow', sns).reindex(sns_with_inv, level=1).mul(eh)
-        rhs.loc[sns_with_inv[:1], noncyclic_i] -= n.df(c).state_of_charge_initial[noncyclic_i]
+        rhs = -get_as_dense(n, c, "inflow", sns).reindex(sns_with_inv, level=1).mul(eh)
+        rhs.loc[sns_with_inv[:1], noncyclic_i] -= n.df(c).state_of_charge_initial[
+            noncyclic_i
+        ]
         # set state of charge at the beginning of each investment period to soc_initial
-        soc_initial_period = expand_series(n.df(c).state_of_charge_initial, sns_with_inv).T
-        exclude = ~(rhs.groupby(level=0).shift().isna() & active.reindex(sns_with_inv, level=0))
+        soc_initial_period = expand_series(
+            n.df(c).state_of_charge_initial, sns_with_inv
+        ).T
+        exclude = ~(
+            rhs.groupby(level=0).shift().isna() & active.reindex(sns_with_inv, level=0)
+        )
         soc_initial_period[exclude] = 0
         rhs[period_i] -= soc_initial_period[period_i]
 
-        define_constraints(n, lhs, '==', rhs, c, 'mu_state_of_charge')
+        define_constraints(n, lhs, "==", rhs, c, "mu_state_of_charge")
 
 
 def define_store_constraints(n, sns, typical_period):
@@ -583,10 +711,11 @@ def define_store_constraints(n, sns, typical_period):
 
     """
     stores_i = n.stores.index
-    if stores_i.empty: return
-    c = 'Store'
+    if stores_i.empty:
+        return
+    c = "Store"
     variables = write_bound(n, -inf, inf, axes=[sns, stores_i])
-    set_varref(n, variables, c, 'p')
+    set_varref(n, variables, c, "p")
 
     if isinstance(sns, pd.MultiIndex):
         sns_with_inv = sns
@@ -594,50 +723,68 @@ def define_store_constraints(n, sns, typical_period):
         sns_with_inv = pd.MultiIndex.from_product([[0], sns])
 
     # elapsed hours
-    eh = expand_series(n.snapshot_weightings.loc[sns, "store_weightings"], stores_i).reindex(sns_with_inv, level=1)
-    eff_stand = expand_series(1-n.df(c).standing_loss, sns_with_inv).T.pow(eh)
+    eh = expand_series(
+        n.snapshot_weightings.loc[sns, "store_weightings"], stores_i
+    ).reindex(sns_with_inv, level=1)
+    eff_stand = expand_series(1 - n.df(c).standing_loss, sns_with_inv).T.pow(eh)
 
-    e = get_var(n, c, 'e').reindex(sns_with_inv, level=1)
-    cyclic_i = n.df(c).query('e_cyclic').index
-    noncyclic_i = n.df(c).query('~e_cyclic & ~e_period').index
+    e = get_var(n, c, "e").reindex(sns_with_inv, level=1)
+    cyclic_i = n.df(c).query("e_cyclic").index
+    noncyclic_i = n.df(c).query("~e_cyclic & ~e_period").index
     period_i = n.df(c).query("~e_cyclic & e_period").index
-    active =  pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                         for inv_p in sns_with_inv.levels[0]], axis=1).T
-    active_i =  active.astype(int)[period_i]
+    active = pd.concat(
+        [
+            get_active_assets(n, c, inv_p, sns).rename(inv_p)
+            for inv_p in sns_with_inv.levels[0]
+        ],
+        axis=1,
+    ).T
+    active_i = active.astype(int)[period_i]
 
     # e at the beginning of each investment period (e_first_inv) should be the
     # same during the lifetime of the storage for e_period=True
-    eff_stand_periodic = ((eff_stand.mul(active_i, level=0)).groupby(level=0).shift()
-                          .apply(lambda x: x.dropna()))
+    eff_stand_periodic = (
+        (eff_stand.mul(active_i, level=0))
+        .groupby(level=0)
+        .shift()
+        .apply(lambda x: x.dropna())
+    )
     previous_e_periodic = e.groupby(level=0).shift().dropna()
 
     # cyclic constraint
     previous_e_cyclic = e.groupby(level=0).shift()
     fill_with_last = e.groupby(level=0).last()
     previous_e_cyclic = previous_e_cyclic.combine_first(
-                          previous_e_cyclic.add(fill_with_last, level=0, fill_value=0))
+        previous_e_cyclic.add(fill_with_last, level=0, fill_value=0)
+    )
 
-    coeff_var = [(-eh, get_var(n, c, 'p')), (-1, e)]
+    coeff_var = [(-eh, get_var(n, c, "p")), (-1, e)]
 
     lhs, *axes = linexpr(*coeff_var, return_axes=True)
 
     def masked_term(coeff, var, cols):
-        return linexpr((coeff[cols], var[cols]))\
-               .reindex(index=axes[0], columns=axes[1], fill_value='').values
+        return (
+            linexpr((coeff[cols], var[cols]))
+            .reindex(index=axes[0], columns=axes[1], fill_value="")
+            .values
+        )
 
     lhs += masked_term(eff_stand, previous_e_cyclic, cyclic_i)
-    lhs += masked_term(eff_stand.loc[sns_with_inv[1:]], e.shift().loc[sns_with_inv[1:]], noncyclic_i)
+    lhs += masked_term(
+        eff_stand.loc[sns_with_inv[1:]], e.shift().loc[sns_with_inv[1:]], noncyclic_i
+    )
     lhs += masked_term(eff_stand_periodic, previous_e_periodic, period_i)
 
     rhs = pd.DataFrame(0, sns_with_inv, stores_i)
-    rhs.loc[sns_with_inv[:1], noncyclic_i] -= n.df(c)['e_initial'][noncyclic_i]
+    rhs.loc[sns_with_inv[:1], noncyclic_i] -= n.df(c)["e_initial"][noncyclic_i]
     e_initial_period = expand_series(n.df(c).e_initial, sns_with_inv).T
-    exclude = ~(rhs.groupby(level=0).shift().isna() & active.reindex(sns_with_inv, level=0))
+    exclude = ~(
+        rhs.groupby(level=0).shift().isna() & active.reindex(sns_with_inv, level=0)
+    )
     e_initial_period[exclude] = 0
     rhs[period_i] -= e_initial_period[period_i]
 
-    define_constraints(n, lhs, '==', rhs, c, 'mu_state_of_charge')
-
+    define_constraints(n, lhs, "==", rhs, c, "mu_state_of_charge")
 
 
 def define_global_constraints(n, sns):
@@ -664,191 +811,260 @@ def define_global_constraints(n, sns):
     # (1)(a) primary_energy
     glcs = n.global_constraints.query('type == "primary_energy"')
 
-    weightings = (n.snapshot_weightings
-                  .mul(n.investment_period_weightings["time_weightings"]
-                       .reindex(sns).fillna(method="bfill").fillna(1.), axis=0)
-                  )
-
+    weightings = n.snapshot_weightings.mul(
+        n.investment_period_weightings["time_weightings"]
+        .reindex(sns)
+        .fillna(method="bfill")
+        .fillna(1.0),
+        axis=0,
+    )
 
     for name, glc in glcs.iterrows():
         rhs = glc.constant
-        lhs = ''
+        lhs = ""
         carattr = glc.carrier_attribute
-        emissions = n.carriers.query(f'{carattr} != 0')[carattr]
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
 
-        if emissions.empty: continue
+        if emissions.empty:
+            continue
 
         # generators
-        gens = n.generators.query('carrier in @emissions.index')
+        gens = n.generators.query("carrier in @emissions.index")
         if not gens.empty:
-            em_pu = gens.carrier.map(emissions)/gens.efficiency
-            em_pu = weightings["generator_weightings"].to_frame('weightings') @\
-                    em_pu.to_frame('weightings').T
-            vals = linexpr((em_pu, get_var(n, 'Generator', 'p')[gens.index]),
-                           as_pandas=True).groupby(level=0).sum()
+            em_pu = gens.carrier.map(emissions) / gens.efficiency
+            em_pu = (
+                weightings["generator_weightings"].to_frame("weightings")
+                @ em_pu.to_frame("weightings").T
+            )
+            vals = (
+                linexpr(
+                    (em_pu, get_var(n, "Generator", "p")[gens.index]), as_pandas=True
+                )
+                .groupby(level=0)
+                .sum()
+            )
             # get time period to which constraint applies
             inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else sns
-            time_valid = (inv_valid if glc["investment_period"]=='' else
-                          int(glc["investment_period"]))
-            lhs +=  join_exprs(vals.loc[time_valid])
+            time_valid = (
+                inv_valid
+                if glc["investment_period"] == ""
+                else int(glc["investment_period"])
+            )
+            lhs += join_exprs(vals.loc[time_valid])
 
         # storage units
-        sus = n.storage_units.query('carrier in @emissions.index and '
-                                    'not cyclic_state_of_charge')
+        sus = n.storage_units.query(
+            "carrier in @emissions.index and " "not cyclic_state_of_charge"
+        )
         sus_i = sus.index
         if not sus.empty:
-            coeff_val = (-sus.carrier.map(emissions), get_var(n, 'StorageUnit',
-                         'state_of_charge').loc[sns[-1], sus_i])
+            coeff_val = (
+                -sus.carrier.map(emissions),
+                get_var(n, "StorageUnit", "state_of_charge").loc[sns[-1], sus_i],
+            )
             vals = linexpr(coeff_val, as_pandas=False)
-            lhs = lhs + '\n' + join_exprs(vals)
+            lhs = lhs + "\n" + join_exprs(vals)
             rhs -= sus.carrier.map(emissions) @ sus.state_of_charge_initial
 
         # stores
-        n.stores['carrier'] = n.stores.bus.map(n.buses.carrier)
-        stores = n.stores.query('carrier in @emissions.index and not e_cyclic')
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
         if not stores.empty:
-            coeff_val = (-stores.carrier.map(emissions), get_var(n, 'Store', 'e')
-                         .loc[sns[-1], stores.index])
+            coeff_val = (
+                -stores.carrier.map(emissions),
+                get_var(n, "Store", "e").loc[sns[-1], stores.index],
+            )
             vals = linexpr(coeff_val, as_pandas=False)
-            lhs = lhs + '\n' + join_exprs(vals)
+            lhs = lhs + "\n" + join_exprs(vals)
             rhs -= stores.carrier.map(emissions) @ stores.e_initial
 
         con = write_constraint(n, lhs, glc.sense, rhs, axes=pd.Index([name]))
-        set_conref(n, con, 'GlobalConstraint', 'mu', name)
+        set_conref(n, con, "GlobalConstraint", "mu", name)
 
     # for line expansion we need to add a line carrier
-    if any(n.global_constraints.type.isin(["transmission_volume_expansion_limit",
-                                           "transmission_expansion_cost_limit"])):
-        n.lines['carrier'] = n.lines.bus0.map(n.buses.carrier)
+    if any(
+        n.global_constraints.type.isin(
+            ["transmission_volume_expansion_limit", "transmission_expansion_cost_limit"]
+        )
+    ):
+        n.lines["carrier"] = n.lines.bus0.map(n.buses.carrier)
 
-     # (1)(b) Budget
+    # (1)(b) Budget
     glcs = n.global_constraints.query('type == "Budget"')
     for name, glc in glcs.iterrows():
         rhs = glc.constant
-        lhs = ''
+        lhs = ""
         carattr = glc.carrier_attribute
-        emissions = n.carriers.query(f'{carattr} != 0')[carattr]
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
 
-        if emissions.empty: continue
+        if emissions.empty:
+            continue
 
         # generators
-        gens = n.generators.query('carrier in @emissions.index')
+        gens = n.generators.query("carrier in @emissions.index")
         if not gens.empty:
-            em_pu = gens.carrier.map(emissions)/gens.efficiency
-            em_pu = weightings["generator_weightings"].to_frame('weightings') @\
-                    em_pu.to_frame('weightings').T
-            vals = linexpr((em_pu, get_var(n, 'Generator', 'p')[gens.index]),
-                           as_pandas=False)
+            em_pu = gens.carrier.map(emissions) / gens.efficiency
+            em_pu = (
+                weightings["generator_weightings"].to_frame("weightings")
+                @ em_pu.to_frame("weightings").T
+            )
+            vals = linexpr(
+                (em_pu, get_var(n, "Generator", "p")[gens.index]), as_pandas=False
+            )
             lhs += join_exprs(vals)
 
         # storage units
-        sus = n.storage_units.query('carrier in @emissions.index and '
-                                    'not cyclic_state_of_charge')
+        sus = n.storage_units.query(
+            "carrier in @emissions.index and " "not cyclic_state_of_charge"
+        )
         sus_i = sus.index
         if not sus.empty:
-            coeff_val = (-sus.carrier.map(emissions), get_var(n, 'StorageUnit',
-                         'state_of_charge').loc[sns[-1], sus_i])
+            coeff_val = (
+                -sus.carrier.map(emissions),
+                get_var(n, "StorageUnit", "state_of_charge").loc[sns[-1], sus_i],
+            )
             vals = linexpr(coeff_val, as_pandas=False)
-            lhs = lhs + '\n' + join_exprs(vals)
+            lhs = lhs + "\n" + join_exprs(vals)
             rhs -= sus.carrier.map(emissions) @ sus.state_of_charge_initial
 
         # stores
-        n.stores['carrier'] = n.stores.bus.map(n.buses.carrier)
-        stores = n.stores.query('carrier in @emissions.index and not e_cyclic')
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
         if not stores.empty:
-            coeff_val = (-stores.carrier.map(emissions), get_var(n, 'Store', 'e')
-                         .groupby(level=0).last()[stores.index])
+            coeff_val = (
+                -stores.carrier.map(emissions),
+                get_var(n, "Store", "e").groupby(level=0).last()[stores.index],
+            )
             vals = linexpr(coeff_val, as_pandas=False)
-            lhs = lhs + '\n' + join_exprs(vals)
+            lhs = lhs + "\n" + join_exprs(vals)
             rhs -= stores.carrier.map(emissions) @ stores.e_initial
 
         con = write_constraint(n, lhs, glc.sense, rhs, axes=pd.Index([name]))
-        set_conref(n, con, 'GlobalConstraint', 'mu', name)
-
+        set_conref(n, con, "GlobalConstraint", "mu", name)
 
     # for line expansion we need to add a line carrier
-    if any(n.global_constraints.type.isin(["transmission_volume_expansion_limit",
-                                           "transmission_expansion_cost_limit"])):
-        n.lines['carrier'] = n.lines.bus0.map(n.buses.carrier)
+    if any(
+        n.global_constraints.type.isin(
+            ["transmission_volume_expansion_limit", "transmission_expansion_cost_limit"]
+        )
+    ):
+        n.lines["carrier"] = n.lines.bus0.map(n.buses.carrier)
 
     # (2) transmission_volume_expansion_limit
-    glcs = n.global_constraints.query('type == '
-                                      '"transmission_volume_expansion_limit"')
-    substr = lambda s: re.sub('[\[\]\(\)]', '', s)
+    glcs = n.global_constraints.query(
+        "type == " '"transmission_volume_expansion_limit"'
+    )
+    substr = lambda s: re.sub("[\[\]\(\)]", "", s)
     for name, glc in glcs.iterrows():
-        car = [substr(c.strip()) for c in glc.carrier_attribute.split(',')]
-        lhs = ''
-        for c, attr in (('Line', 's_nom'), ('Link', 'p_nom')):
-            if n.df(c).empty: continue
-            ext_i = n.df(c).query(f'carrier in @car and {attr}_extendable').index
-            if ext_i.empty: continue
+        car = [substr(c.strip()) for c in glc.carrier_attribute.split(",")]
+        lhs = ""
+        for c, attr in (("Line", "s_nom"), ("Link", "p_nom")):
+            if n.df(c).empty:
+                continue
+            ext_i = n.df(c).query(f"carrier in @car and {attr}_extendable").index
+            if ext_i.empty:
+                continue
             # get time period to which constraint applies
-            inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.]
-            time_valid = (inv_valid if glc["investment_period"]=='' else
-                          pd.DatetimeIndex([glc["investment_period"]]))
+            inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.0]
+            time_valid = (
+                inv_valid
+                if glc["investment_period"] == ""
+                else pd.DatetimeIndex([glc["investment_period"]])
+            )
             # get active assets during time valid
-            active_i = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                              for inv_p in time_valid], axis=1).astype(int)
+            active_i = pd.concat(
+                [
+                    get_active_assets(n, c, inv_p, sns).rename(inv_p)
+                    for inv_p in time_valid
+                ],
+                axis=1,
+            ).astype(int)
             ext_and_active = active_i.T[active_i.index.intersection(ext_i)]
-            v = linexpr((n.df(c).loc[ext_and_active.columns, "length"].mul(ext_and_active),
-                         get_var(n, c, attr)[ext_and_active.columns]),
-                        as_pandas=False)
+            v = linexpr(
+                (
+                    n.df(c).loc[ext_and_active.columns, "length"].mul(ext_and_active),
+                    get_var(n, c, attr)[ext_and_active.columns],
+                ),
+                as_pandas=False,
+            )
             lhs += v.sum(axis=1)
-        if type(lhs) == str: continue
+        if type(lhs) == str:
+            continue
         sense = glc.sense
         rhs = glc.constant
         con = write_constraint(n, lhs, sense, rhs, axes=pd.Index([name]))
-        set_conref(n, con, 'GlobalConstraint', 'mu', name)
+        set_conref(n, con, "GlobalConstraint", "mu", name)
 
     # (3) transmission_expansion_cost_limit
-    glcs = n.global_constraints.query('type == '
-                                      '"transmission_expansion_cost_limit"')
+    glcs = n.global_constraints.query("type == " '"transmission_expansion_cost_limit"')
     for name, glc in glcs.iterrows():
-        car = [substr(c.strip()) for c in glc.carrier_attribute.split(',')]
-        lhs = ''
-        for c, attr in (('Line', 's_nom'), ('Link', 'p_nom')):
-            ext_i = n.df(c).query(f'carrier in @car and {attr}_extendable').index
+        car = [substr(c.strip()) for c in glc.carrier_attribute.split(",")]
+        lhs = ""
+        for c, attr in (("Line", "s_nom"), ("Link", "p_nom")):
+            ext_i = n.df(c).query(f"carrier in @car and {attr}_extendable").index
 
-            inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.]
-            time_valid = (inv_valid if glc["investment_period"]=='' else
-                          pd.DatetimeIndex([glc["investment_period"]]))
+            inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.0]
+            time_valid = (
+                inv_valid
+                if glc["investment_period"] == ""
+                else pd.DatetimeIndex([glc["investment_period"]])
+            )
 
-             # get active assets during time valid
-            active_i = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                              for inv_p in time_valid], axis=1).astype(int)
+            # get active assets during time valid
+            active_i = pd.concat(
+                [
+                    get_active_assets(n, c, inv_p, sns).rename(inv_p)
+                    for inv_p in time_valid
+                ],
+                axis=1,
+            ).astype(int)
             ext_and_active = active_i.T[active_i.index.intersection(ext_i)]
 
-            if ext_and_active.empty: continue
-            v = linexpr((n.df(c).loc[ext_and_active.columns, "capital_cost"].mul(ext_and_active),
-                         get_var(n, c, attr)[ext_and_active.columns]),
-                        as_pandas=False)
+            if ext_and_active.empty:
+                continue
+            v = linexpr(
+                (
+                    n.df(c)
+                    .loc[ext_and_active.columns, "capital_cost"]
+                    .mul(ext_and_active),
+                    get_var(n, c, attr)[ext_and_active.columns],
+                ),
+                as_pandas=False,
+            )
             lhs += v.sum(axis=1)
-        if type(lhs) == str: continue
+        if type(lhs) == str:
+            continue
         sense = glc.sense
         rhs = glc.constant
         con = write_constraint(n, lhs, sense, rhs, axes=pd.Index([name]))
-        set_conref(n, con, 'GlobalConstraint', 'mu', name)
-
+        set_conref(n, con, "GlobalConstraint", "mu", name)
 
     # (4) tech_capacity_expansion_limit
-    substr = lambda s: re.sub('[\[\]\(\)]', '', s)
-    glcs = n.global_constraints.query('type == '
-                                      '"tech_capacity_expansion_limit"')
-    c, attr = 'Generator', 'p_nom'
+    substr = lambda s: re.sub("[\[\]\(\)]", "", s)
+    glcs = n.global_constraints.query("type == " '"tech_capacity_expansion_limit"')
+    c, attr = "Generator", "p_nom"
 
     for name, glc in glcs.iterrows():
-        ext_i = n.df(c)[(n.df(c)["carrier"]==glc.loc["carrier_attribute"])
-                        & (n.df(c)["bus"] ==glc.loc["bus"])
-                        & (n.df(c)["p_nom_extendable"])].index
-        inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.]
-        time_valid = (inv_valid if glc["investment_period"]=='' else
-              pd.DatetimeIndex([glc["investment_period"]]))
-        active_i = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                              for inv_p in time_valid], axis=1).astype(int)
+        ext_i = n.df(c)[
+            (n.df(c)["carrier"] == glc.loc["carrier_attribute"])
+            & (n.df(c)["bus"] == glc.loc["bus"])
+            & (n.df(c)["p_nom_extendable"])
+        ].index
+        inv_valid = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.0]
+        time_valid = (
+            inv_valid
+            if glc["investment_period"] == ""
+            else pd.DatetimeIndex([glc["investment_period"]])
+        )
+        active_i = pd.concat(
+            [get_active_assets(n, c, inv_p, sns).rename(inv_p) for inv_p in time_valid],
+            axis=1,
+        ).astype(int)
 
         ext_and_active = active_i.T[active_i.index.intersection(ext_i)]
 
-        if ext_and_active.empty: continue
+        if ext_and_active.empty:
+            continue
 
         cap_vars = get_var(n, c, attr)[ext_and_active.columns]
 
@@ -858,8 +1074,7 @@ def define_global_constraints(n, sns):
 
         con = write_constraint(n, lhs, sense, rhs, axes=pd.Index([name]))
 
-        set_conref(n, con, 'GlobalConstraint', 'mu_cap_limit', name)
-
+        set_conref(n, con, "GlobalConstraint", "mu_cap_limit", name)
 
 
 def define_objective(n, sns):
@@ -868,57 +1083,98 @@ def define_objective(n, sns):
 
     """
 
-    investments = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.]
+    investments = sns.levels[0] if isinstance(sns, pd.MultiIndex) else [0.0]
 
+    objective_w_investment = (
+        n.investment_period_weightings["objective_weightings"]
+        .reindex(investments)
+        .fillna(1.0)
+    )
 
-    objective_w_investment = (n.investment_period_weightings["objective_weightings"]
-                             .reindex(investments).fillna(1.))
-
-    objective_weightings = (n.snapshot_weightings
-                            .mul(n.investment_period_weightings["objective_weightings"]
-                                 .reindex(sns, level=0)
-                            .fillna(method="bfill").fillna(1.), axis=0))
+    objective_weightings = n.snapshot_weightings.mul(
+        n.investment_period_weightings["objective_weightings"]
+        .reindex(sns, level=0)
+        .fillna(method="bfill")
+        .fillna(1.0),
+        axis=0,
+    )
 
     # constant for already done investment
     nom_attr = nominal_attrs.items()
     constant = 0
     for c, attr in nom_attr:
         ext_i = get_extendable_i(n, c)
-        active = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                          for inv_p in investments], axis=1).astype(int).loc[ext_i]
+        active = (
+            pd.concat(
+                [
+                    get_active_assets(n, c, inv_p, sns).rename(inv_p)
+                    for inv_p in investments
+                ],
+                axis=1,
+            )
+            .astype(int)
+            .loc[ext_i]
+        )
         active_i = active.index
-        constant += (n.df(c)[attr][active_i] @
-                    (active.mul(n.df(c).capital_cost[active_i], axis=0)
-                     .mul(objective_w_investment))).sum()
+        constant += (
+            n.df(c)[attr][active_i]
+            @ (
+                active.mul(n.df(c).capital_cost[active_i], axis=0).mul(
+                    objective_w_investment
+                )
+            )
+        ).sum()
     object_const = write_bound(n, constant, constant)
     write_objective(n, linexpr((-1, object_const), as_pandas=False)[0])
     n.objective_constant = constant
 
     # marginal cost
-    for c, attr in lookup.query('marginal_cost').index:
-        cost = (get_as_dense(n, c, 'marginal_cost', sns)
-                .loc[:, lambda ds: (ds != 0).all()]
-                .mul(objective_weightings.loc[sns, "objective_weightings"], axis=0))
-        if cost.empty: continue
+    for c, attr in lookup.query("marginal_cost").index:
+        cost = (
+            get_as_dense(n, c, "marginal_cost", sns)
+            .loc[:, lambda ds: (ds != 0).all()]
+            .mul(objective_weightings.loc[sns, "objective_weightings"], axis=0)
+        )
+        if cost.empty:
+            continue
         terms = linexpr((cost, get_var(n, c, attr).loc[sns, cost.columns]))
         write_objective(n, terms)
 
     # investment
     for c, attr in nominal_attrs.items():
         ext_i = get_extendable_i(n, c)
-        cost = n.df(c)['capital_cost'][ext_i]
-        if cost.empty: continue
-        active = pd.concat([get_active_assets(n,c,inv_p,sns).rename(inv_p)
-                          for inv_p in investments], axis=1).astype(int).loc[ext_i]
+        cost = n.df(c)["capital_cost"][ext_i]
+        if cost.empty:
+            continue
+        active = (
+            pd.concat(
+                [
+                    get_active_assets(n, c, inv_p, sns).rename(inv_p)
+                    for inv_p in investments
+                ],
+                axis=1,
+            )
+            .astype(int)
+            .loc[ext_i]
+        )
 
-        caps = expand_series(get_var(n, c, attr).loc[cost.index], investments).loc[cost.index]
+        caps = expand_series(get_var(n, c, attr).loc[cost.index], investments).loc[
+            cost.index
+        ]
         cost_weighted = active.mul(cost, axis=0).mul(objective_w_investment)
         terms = linexpr((cost_weighted, caps))
         write_objective(n, terms)
 
 
-def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
-                 extra_functionality=None, solver_dir=None, typical_period=False):
+def prepare_lopf(
+    n,
+    snapshots=None,
+    keep_files=False,
+    skip_objective=False,
+    extra_functionality=None,
+    solver_dir=None,
+    typical_period=False,
+):
     """
     Sets up the linear problem and writes it out to a lp file.
 
@@ -931,7 +1187,7 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
     n._xCounter, n._cCounter = 1, 1
     n.vars, n.cons = Dict(), Dict()
 
-    cols = ['component', 'name', 'pnl', 'specification']
+    cols = ["component", "name", "pnl", "specification"]
     n.variables = pd.DataFrame(columns=cols).set_index(cols[:2])
     n.constraints = pd.DataFrame(columns=cols).set_index(cols[:2])
 
@@ -940,18 +1196,18 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
 
     tmpkwargs = dict(text=True, dir=solver_dir)
     # mkstemp(suffix, prefix, **tmpkwargs)
-    fdo, objective_fn = mkstemp('.txt', 'pypsa-objectve-', **tmpkwargs)
-    fdc, constraints_fn = mkstemp('.txt', 'pypsa-constraints-', **tmpkwargs)
-    fdb, bounds_fn = mkstemp('.txt', 'pypsa-bounds-', **tmpkwargs)
-    fdi, binaries_fn = mkstemp('.txt', 'pypsa-binaries-', **tmpkwargs)
-    fdp, problem_fn = mkstemp('.lp', 'pypsa-problem-', **tmpkwargs)
+    fdo, objective_fn = mkstemp(".txt", "pypsa-objectve-", **tmpkwargs)
+    fdc, constraints_fn = mkstemp(".txt", "pypsa-constraints-", **tmpkwargs)
+    fdb, bounds_fn = mkstemp(".txt", "pypsa-bounds-", **tmpkwargs)
+    fdi, binaries_fn = mkstemp(".txt", "pypsa-binaries-", **tmpkwargs)
+    fdp, problem_fn = mkstemp(".lp", "pypsa-problem-", **tmpkwargs)
 
-    n.objective_f = open(objective_fn, mode='w')
-    n.constraints_f = open(constraints_fn, mode='w')
-    n.bounds_f = open(bounds_fn, mode='w')
-    n.binaries_f = open(binaries_fn, mode='w')
+    n.objective_f = open(objective_fn, mode="w")
+    n.constraints_f = open(constraints_fn, mode="w")
+    n.bounds_f = open(bounds_fn, mode="w")
+    n.binaries_f = open(binaries_fn, mode="w")
 
-    n.objective_f.write('\* LOPF *\n\nmin\nobj:\n')
+    n.objective_f.write("\* LOPF *\n\nmin\nobj:\n")
     n.constraints_f.write("\n\ns.t.\n\n")
     n.bounds_f.write("\nbounds\n")
     n.binaries_f.write("\nbinary\n")
@@ -959,11 +1215,11 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
     if typical_period:
         logger.info("assuming storage constraints for typical periods.")
 
-    for c, attr in lookup.query('nominal and not handle_separately').index:
+    for c, attr in lookup.query("nominal and not handle_separately").index:
         define_nominal_for_extendable_variables(n, c, attr)
         # define constraint for newly installed capacity per investment period
         define_growth_limit(n, snapshots, c, attr)
-    for c, attr in lookup.query('not nominal and not handle_separately').index:
+    for c, attr in lookup.query("not nominal and not handle_separately").index:
         define_dispatch_for_non_extendable_variables(n, snapshots, c, attr)
         define_dispatch_for_extendable_and_committable_variables(n, snapshots, c, attr)
         align_with_static_component(n, c, attr)
@@ -972,8 +1228,8 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
     define_generator_status_variables(n, snapshots)
 
     # consider only state_of_charge_set for the moment
-    define_fixed_variable_constraints(n, snapshots, 'StorageUnit', 'state_of_charge')
-    define_fixed_variable_constraints(n, snapshots, 'Store', 'e')
+    define_fixed_variable_constraints(n, snapshots, "StorageUnit", "state_of_charge")
+    define_fixed_variable_constraints(n, snapshots, "Store", "e")
 
     define_committable_generator_constraints(n, snapshots)
     define_ramp_limit_constraints(n, snapshots)
@@ -984,8 +1240,10 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
     define_global_constraints(n, snapshots)
 
     if skip_objective:
-        logger.info("The argument `skip_objective` is set to True. Expecting a "
-                    "custom objective to be build via `extra_functionality`.")
+        logger.info(
+            "The argument `skip_objective` is set to True. Expecting a "
+            "custom objective to be build via `extra_functionality`."
+        )
     else:
         define_objective(n, snapshots)
 
@@ -995,33 +1253,46 @@ def prepare_lopf(n, snapshots=None, keep_files=False, skip_objective=False,
     n.binaries_f.write("end\n")
 
     # explicit closing with file descriptor is necessary for windows machines
-    for f, fd in (('bounds_f', fdb), ('constraints_f', fdc),
-                  ('objective_f', fdo), ('binaries_f', fdi)):
-        getattr(n, f).close(); delattr(n, f); os.close(fd)
+    for f, fd in (
+        ("bounds_f", fdb),
+        ("constraints_f", fdc),
+        ("objective_f", fdo),
+        ("binaries_f", fdi),
+    ):
+        getattr(n, f).close()
+        delattr(n, f)
+        os.close(fd)
 
     # concate files
-    with open(problem_fn, 'wb') as wfd:
+    with open(problem_fn, "wb") as wfd:
         for f in [objective_fn, constraints_fn, bounds_fn, binaries_fn]:
-            with open(f,'rb') as fd:
+            with open(f, "rb") as fd:
                 shutil.copyfileobj(fd, wfd)
             if not keep_files:
                 os.remove(f)
 
-    logger.info(f'Total preparation time: {round(time.time()-start, 2)}s')
+    logger.info(f"Total preparation time: {round(time.time()-start, 2)}s")
     return fdp, problem_fn
 
 
-def assign_solution(n, sns, variables_sol, constraints_dual,
-                    keep_references=False, keep_shadowprices=None):
+def assign_solution(
+    n,
+    sns,
+    variables_sol,
+    constraints_dual,
+    keep_references=False,
+    keep_shadowprices=None,
+):
     """Map solution to network components.
 
     Helper function. Assigns the solution of a succesful optimization to the
     network.
 
     """
+
     def set_from_frame(pnl, attr, df):
         if attr not in pnl:
-            if isinstance(n.snapshots, pd.MultiIndex): #
+            if isinstance(n.snapshots, pd.MultiIndex):  #
                 pnl[attr] = df.reindex(n.snapshots, level=0)
             else:
                 pnl[attr] = df.reindex(n.snapshots)
@@ -1035,93 +1306,123 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
             pnl[attr].loc[sns, :] = df.reindex(columns=pnl[attr].columns)
 
     pop = not keep_references
+
     def map_solution(c, attr):
         variables = get_var(n, c, attr, pop=pop)
         predefined = True
         if (c, attr) not in lookup.index:
             predefined = False
             n.sols[c] = n.sols[c] if c in n.sols else Dict(df=pd.DataFrame(), pnl={})
-        n.solutions.at[(c, attr), 'in_comp'] = predefined
+        n.solutions.at[(c, attr), "in_comp"] = predefined
         if isinstance(variables, pd.DataFrame):
             # case that variables are timedependent
-            n.solutions.at[(c, attr), 'pnl'] = True
+            n.solutions.at[(c, attr), "pnl"] = True
             pnl = n.pnl(c) if predefined else n.sols[c].pnl
             values = variables.applymap(lambda x: variables_sol.loc[x])
             if c in n.passive_branch_components and attr == "s":
-                set_from_frame(pnl, 'p0', values)
-                set_from_frame(pnl, 'p1', - values)
-            elif c == 'Link' and attr == "p":
-                set_from_frame(pnl, 'p0', values)
-                for i in ['1'] + additional_linkports(n):
-                    i_eff = '' if i == '1' else i
-                    eff = get_as_dense(n, 'Link', f'efficiency{i_eff}', sns)
-                    set_from_frame(pnl, f'p{i}', - values * eff)
-                    pnl[f'p{i}'].loc[sns, n.links.index[n.links[f'bus{i}'] == ""]] = \
-                        n.component_attrs['Link'].loc[f'p{i}','default']
+                set_from_frame(pnl, "p0", values)
+                set_from_frame(pnl, "p1", -values)
+            elif c == "Link" and attr == "p":
+                set_from_frame(pnl, "p0", values)
+                for i in ["1"] + additional_linkports(n):
+                    i_eff = "" if i == "1" else i
+                    eff = get_as_dense(n, "Link", f"efficiency{i_eff}", sns)
+                    set_from_frame(pnl, f"p{i}", -values * eff)
+                    pnl[f"p{i}"].loc[
+                        sns, n.links.index[n.links[f"bus{i}"] == ""]
+                    ] = n.component_attrs["Link"].loc[f"p{i}", "default"]
             else:
                 set_from_frame(pnl, attr, values)
 
             # map investment costs of learning technologies
-            if c == "Carrier" and attr =='cap_per_period':
-                inv_per_period_v = get_var(n, c, 'inv_per_period', pop=False)
-                inv_per_period = inv_per_period_v.applymap(lambda x: variables_sol.loc[x])
-                capital_cost = round(inv_per_period/ values.replace(0,1), ndigits=2)
+            if c == "Carrier" and attr == "cap_per_period":
+                inv_per_period_v = get_var(n, c, "inv_per_period", pop=False)
+                inv_per_period = inv_per_period_v.applymap(
+                    lambda x: variables_sol.loc[x]
+                )
+                capital_cost = round(inv_per_period / values.replace(0, 1), ndigits=2)
                 learn_i = capital_cost.columns
-                capital_cost[round(values)==0] = np.NaN
-                capital_cost.loc[sns[0][0]].fillna(n.carriers.loc[learn_i, "initial_cost"], inplace=True)
+                capital_cost[round(values) == 0] = np.NaN
+                capital_cost.loc[sns[0][0]].fillna(
+                    n.carriers.loc[learn_i, "initial_cost"], inplace=True
+                )
                 capital_cost.fillna(method="ffill", inplace=True)
                 for comp, attribute in nominal_attrs.items():
                     ext_i = get_extendable_i(n, comp)
-                    if "carrier" not in n.df(comp) or n.df(comp).empty: continue
+                    if "carrier" not in n.df(comp) or n.df(comp).empty:
+                        continue
                     learn_assets = n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
-                    learn_assets = ext_i.intersection(n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index)
-                    if learn_assets.empty: continue
-                    n.df(comp).loc[learn_assets, "capital_cost"] = n.df(comp).loc[learn_assets].apply(lambda x: capital_cost.loc[x.loc["build_year"], x.loc["carrier"]],
-                                                                                    axis=1)
+                    learn_assets = ext_i.intersection(
+                        n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
+                    )
+                    if learn_assets.empty:
+                        continue
+                    n.df(comp).loc[learn_assets, "capital_cost"] = (
+                        n.df(comp)
+                        .loc[learn_assets]
+                        .apply(
+                            lambda x: capital_cost.loc[
+                                x.loc["build_year"], x.loc["carrier"]
+                            ],
+                            axis=1,
+                        )
+                    )
         else:
             # case that variables are static
-            n.solutions.at[(c, attr), 'pnl'] = False
+            n.solutions.at[(c, attr), "pnl"] = False
             sol = variables.map(variables_sol)
             if predefined:
                 non_ext = n.df(c)[attr]
-                n.df(c)[attr + '_opt'] = sol.reindex(non_ext.index).fillna(non_ext)
+                n.df(c)[attr + "_opt"] = sol.reindex(non_ext.index).fillna(non_ext)
             else:
                 n.sols[c].df[attr] = sol
 
     n.sols = Dict()
-    n.solutions = pd.DataFrame(index=n.variables.index, columns=['in_comp', 'pnl'])
+    n.solutions = pd.DataFrame(index=n.variables.index, columns=["in_comp", "pnl"])
     for c, attr in n.variables.index:
         map_solution(c, attr)
 
     # overwrite capital cost
-    learn_i = n.carriers[n.carriers.learning_rate!=0].index
-    if not learn_i.empty:
-        l=round(n.sols["Carrier"]["pnl"]["learning"].groupby(level=0).first())
+    learn_i = n.carriers[n.carriers.learning_rate != 0].index
+    if not learn_i.empty and "Carrier" in n.sols.keys():
+        l = round(n.sols["Carrier"]["pnl"]["learning"].groupby(level=0).first())
         segments = len(l.columns.levels[1])
         investments = l.index
         x_low = n.carriers.loc[learn_i, "global_capacity"]
         x_high = n.carriers.loc[learn_i, "max_capacity"]
         points = get_linear_interpolation_points(n, x_low, x_high, segments)
         slope = get_slope(points)
-        slope_t = expand_series(slope.stack().swaplevel().reindex(l.columns), investments).T
+        slope_t = expand_series(
+            slope.stack().swaplevel().reindex(l.columns), investments
+        ).T
         capital_cost = (l * slope_t).groupby(level=0, axis=1).sum()
         for comp, attribute in nominal_attrs.items():
-                    ext_i = get_extendable_i(n, comp)
-                    if "carrier" not in n.df(comp) or n.df(comp).empty: continue
-                    learn_assets = n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
-                    learn_assets = ext_i.intersection(n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index)
-                    if learn_assets.empty: continue
-                    n.df(comp).loc[learn_assets, "capital_cost"] = n.df(comp).loc[learn_assets].apply(lambda x: capital_cost.loc[x.loc["build_year"], x.loc["carrier"]],
-                                                                                    axis=1)
+            ext_i = get_extendable_i(n, comp)
+            if "carrier" not in n.df(comp) or n.df(comp).empty:
+                continue
+            learn_assets = n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
+            learn_assets = ext_i.intersection(
+                n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
+            )
+            if learn_assets.empty:
+                continue
+            n.df(comp).loc[learn_assets, "capital_cost"] = (
+                n.df(comp)
+                .loc[learn_assets]
+                .apply(
+                    lambda x: capital_cost.loc[x.loc["build_year"], x.loc["carrier"]],
+                    axis=1,
+                )
+            )
 
     # if nominal capcity was no variable set optimal value to nominal
-    for c, attr in lookup.query('nominal').index.difference(n.variables.index):
-        n.df(c)[attr+'_opt'] = n.df(c)[attr]
+    for c, attr in lookup.query("nominal").index.difference(n.variables.index):
+        n.df(c)[attr + "_opt"] = n.df(c)[attr]
 
     # recalculate storageunit net dispatch
-    if not n.df('StorageUnit').empty:
-        c = 'StorageUnit'
-        n.pnl(c)['p'] = n.pnl(c)['p_dispatch'] - n.pnl(c)['p_store']
+    if not n.df("StorageUnit").empty:
+        c = "StorageUnit"
+        n.pnl(c)["p"] = n.pnl(c)["p_dispatch"] - n.pnl(c)["p_store"]
 
     # duals
     if keep_shadowprices == False:
@@ -1139,11 +1440,11 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
         constraints = get_con(n, c, attr, pop=pop)
         is_pnl = isinstance(constraints, pd.DataFrame)
         # TODO: setting the sign is not very clear
-        sign = 1 if 'upper' in attr or attr == 'marginal_price' else -1
-        n.dualvalues.at[(c, attr), 'pnl'] = is_pnl
+        sign = 1 if "upper" in attr or attr == "marginal_price" else -1
+        n.dualvalues.at[(c, attr), "pnl"] = is_pnl
         to_component = c in n.all_components
         if is_pnl:
-            n.dualvalues.at[(c, attr), 'in_comp'] = to_component
+            n.dualvalues.at[(c, attr), "in_comp"] = to_component
             duals = constraints.applymap(lambda x: sign * constraints_dual.loc[x])
             if c not in n.duals and not to_component:
                 n.duals[c] = Dict(df=pd.DataFrame(), pnl={})
@@ -1153,49 +1454,66 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
             # here to_component can change
             duals = constraints.map(sign * constraints_dual)
             if to_component:
-                to_component = (duals.index.isin(n.df(c).index).all())
-            n.dualvalues.at[(c, attr), 'in_comp'] = to_component
+                to_component = duals.index.isin(n.df(c).index).all()
+            n.dualvalues.at[(c, attr), "in_comp"] = to_component
             if c not in n.duals and not to_component:
                 n.duals[c] = Dict(df=pd.DataFrame(), pnl={})
             df = n.df(c) if to_component else n.duals[c].df
             df[attr] = duals
 
     n.duals = Dict()
-    n.dualvalues = pd.DataFrame(index=sp, columns=['in_comp', 'pnl'])
+    n.dualvalues = pd.DataFrame(index=sp, columns=["in_comp", "pnl"])
     # extract shadow prices attached to components
     for c, attr in sp:
         map_dual(c, attr)
 
-    #correct prices for snapshot weightings
-    n.buses_t.marginal_price.loc[sns] = n.buses_t.marginal_price.loc[sns].divide(n.snapshot_weightings.loc[sns, 'objective_weightings'],axis=0)
+    # correct prices for snapshot weightings
+    n.buses_t.marginal_price.loc[sns] = n.buses_t.marginal_price.loc[sns].divide(
+        n.snapshot_weightings.loc[sns, "objective_weightings"], axis=0
+    )
 
     # discard remaining if wanted
     if not keep_references:
         for c, attr in n.constraints.index.difference(sp):
             get_con(n, c, attr, pop)
 
-    #load
+    # load
     if len(n.loads):
-        set_from_frame(n.pnl('Load'), 'p', get_as_dense(n, 'Load', 'p_set', sns))
+        set_from_frame(n.pnl("Load"), "p", get_as_dense(n, "Load", "p_set", sns))
 
-    #clean up vars and cons
+    # clean up vars and cons
     for c in list(n.vars):
-        if n.vars[c].df.empty and n.vars[c].pnl == {}: n.vars.pop(c)
+        if n.vars[c].df.empty and n.vars[c].pnl == {}:
+            n.vars.pop(c)
     for c in list(n.cons):
-        if n.cons[c].df.empty and n.cons[c].pnl == {}: n.cons.pop(c)
+        if n.cons[c].df.empty and n.cons[c].pnl == {}:
+            n.cons.pop(c)
 
     # recalculate injection
-    ca = [('Generator', 'p', 'bus' ), ('Store', 'p', 'bus'),
-          ('Load', 'p', 'bus'), ('StorageUnit', 'p', 'bus'),
-          ('Link', 'p0', 'bus0'), ('Link', 'p1', 'bus1')]
+    ca = [
+        ("Generator", "p", "bus"),
+        ("Store", "p", "bus"),
+        ("Load", "p", "bus"),
+        ("StorageUnit", "p", "bus"),
+        ("Link", "p0", "bus0"),
+        ("Link", "p1", "bus1"),
+    ]
     for i in additional_linkports(n):
-        ca.append(('Link', f'p{i}', f'bus{i}'))
+        ca.append(("Link", f"p{i}", f"bus{i}"))
 
-    sign = lambda c: n.df(c).sign if 'sign' in n.df(c) else -1 #sign for 'Link'
-    n.buses_t.p = pd.concat(
-            [n.pnl(c)[attr].mul(sign(c)).rename(columns=n.df(c)[group])
-             for c, attr, group in ca], axis=1).groupby(level=0, axis=1).sum()\
-            .reindex(columns=n.buses.index, fill_value=0)
+    sign = lambda c: n.df(c).sign if "sign" in n.df(c) else -1  # sign for 'Link'
+    n.buses_t.p = (
+        pd.concat(
+            [
+                n.pnl(c)[attr].mul(sign(c)).rename(columns=n.df(c)[group])
+                for c, attr, group in ca
+            ],
+            axis=1,
+        )
+        .groupby(level=0, axis=1)
+        .sum()
+        .reindex(columns=n.buses.index, fill_value=0)
+    )
 
     def v_ang_for_(sub):
         buses_i = sub.buses_o
@@ -1205,18 +1523,32 @@ def assign_solution(n, sns, variables_sol, constraints_dual,
         Z = pd.DataFrame(np.linalg.pinv((sub.B).todense()), buses_i, buses_i)
         Z -= Z[sub.slack_bus]
         return n.buses_t.p.reindex(columns=buses_i) @ Z
-    n.buses_t.v_ang = (pd.concat([v_ang_for_(sub) for sub in n.sub_networks.obj],
-                                  axis=1)
-                      .reindex(columns=n.buses.index, fill_value=0))
+
+    n.buses_t.v_ang = pd.concat(
+        [v_ang_for_(sub) for sub in n.sub_networks.obj], axis=1
+    ).reindex(columns=n.buses.index, fill_value=0)
 
 
-def network_lopf(n, snapshots=None, solver_name="cbc",
-         solver_logfile=None, extra_functionality=None, skip_objective=False,
-         skip_pre=False, extra_postprocessing=None, formulation="kirchhoff",
-         keep_references=False, keep_files=False, multi_investment_periods=False,
-         keep_shadowprices=['Bus', 'Line', 'Transformer', 'Link', 'GlobalConstraint'],
-         solver_options=None, warmstart=False, store_basis=False,
-         solver_dir=None, typical_period=False):
+def network_lopf(
+    n,
+    snapshots=None,
+    solver_name="cbc",
+    solver_logfile=None,
+    extra_functionality=None,
+    skip_objective=False,
+    skip_pre=False,
+    extra_postprocessing=None,
+    formulation="kirchhoff",
+    keep_references=False,
+    keep_files=False,
+    multi_investment_periods=False,
+    keep_shadowprices=["Bus", "Line", "Transformer", "Link", "GlobalConstraint"],
+    solver_options=None,
+    warmstart=False,
+    store_basis=False,
+    solver_dir=None,
+    typical_period=False,
+):
     """
     Linear optimal power flow for a group of snapshots.
 
@@ -1282,18 +1614,21 @@ def network_lopf(n, snapshots=None, solver_name="cbc",
         :func:`pypsa.linopt.get_dual` with corresponding name
 
     """
-    supported_solvers = ["cbc", "gurobi", 'glpk', 'cplex', 'xpress']
+    supported_solvers = ["cbc", "gurobi", "glpk", "cplex", "xpress"]
     if solver_name not in supported_solvers:
-        raise NotImplementedError(f"Solver {solver_name} not in "
-                                  f"supported solvers: {supported_solvers}")
+        raise NotImplementedError(
+            f"Solver {solver_name} not in " f"supported solvers: {supported_solvers}"
+        )
 
     if formulation != "kirchhoff":
         raise NotImplementedError("Only the kirchhoff formulation is supported")
 
     if n.generators.committable.any():
-        logger.warning("Unit commitment is not yet completely implemented for "
-        "optimising without pyomo. Thus minimum up time, minimum down time, "
-        "start up costs, shut down costs will be ignored.")
+        logger.warning(
+            "Unit commitment is not yet completely implemented for "
+            "optimising without pyomo. Thus minimum up time, minimum down time, "
+            "start up costs, shut down costs will be ignored."
+        )
 
     snapshots = _as_snapshots(n, snapshots)
 
@@ -1305,9 +1640,16 @@ def network_lopf(n, snapshots=None, solver_name="cbc",
         n.determine_network_topology()
 
     logger.info("Prepare linear problem")
-    fdp, problem_fn = prepare_lopf(n, snapshots, keep_files, skip_objective,
-                                   extra_functionality, solver_dir, typical_period)
-    fds, solution_fn = mkstemp(prefix='pypsa-solve', suffix='.sol', dir=solver_dir)
+    fdp, problem_fn = prepare_lopf(
+        n,
+        snapshots,
+        keep_files,
+        skip_objective,
+        extra_functionality,
+        solver_dir,
+        typical_period,
+    )
+    fds, solution_fn = mkstemp(prefix="pypsa-solve", suffix=".sol", dir=solver_dir)
 
     if warmstart == True:
         warmstart = n.basis_fn
@@ -1315,42 +1657,67 @@ def network_lopf(n, snapshots=None, solver_name="cbc",
     else:
         logger.info(f"Solve linear problem using {solver_name.title()} solver")
 
-    solve = eval(f'run_and_read_{solver_name}')
-    res = solve(n, problem_fn, solution_fn, solver_logfile,
-                solver_options, warmstart, store_basis)
+    solve = eval(f"run_and_read_{solver_name}")
+    res = solve(
+        n,
+        problem_fn,
+        solution_fn,
+        solver_logfile,
+        solver_options,
+        warmstart,
+        store_basis,
+    )
 
     status, termination_condition, variables_sol, constraints_dual, obj = res
 
     if not keep_files:
-        os.close(fdp); os.remove(problem_fn)
-        os.close(fds); os.remove(solution_fn)
+        os.close(fdp)
+        os.remove(problem_fn)
+        os.close(fds)
+        os.remove(solution_fn)
 
     if status == "ok" and termination_condition == "optimal":
-        logger.info('Optimization successful. Objective value: {:.2e}'.format(obj))
+        logger.info("Optimization successful. Objective value: {:.2e}".format(obj))
     elif status == "warning" and termination_condition == "suboptimal":
-        logger.warning('Optimization solution is sub-optimal. '
-                       'Objective value: {:.2e}'.format(obj))
+        logger.warning(
+            "Optimization solution is sub-optimal. "
+            "Objective value: {:.2e}".format(obj)
+        )
     else:
-        logger.warning(f'Optimization failed with status {status} and '
-                       f'termination condition {termination_condition}')
+        logger.warning(
+            f"Optimization failed with status {status} and "
+            f"termination condition {termination_condition}"
+        )
         return status, termination_condition
 
     n.objective = obj
-    assign_solution(n, n.snapshots, variables_sol, constraints_dual,
-                    keep_references=keep_references,
-                    keep_shadowprices=keep_shadowprices)
+    assign_solution(
+        n,
+        n.snapshots,
+        variables_sol,
+        constraints_dual,
+        keep_references=keep_references,
+        keep_shadowprices=keep_shadowprices,
+    )
     gc.collect()
 
     # change single index snapshots back to Multi Index
     if to_single:
         n.set_snapshots(pd.MultiIndex.from_tuples(n.snapshots))
 
-    return status,termination_condition
+    return status, termination_condition
 
 
-def ilopf(n, snapshots=None, msq_threshold=0.05, min_iterations=1,
-          max_iterations=100, track_iterations=False, **kwargs):
-    '''
+def ilopf(
+    n,
+    snapshots=None,
+    msq_threshold=0.05,
+    min_iterations=1,
+    max_iterations=100,
+    track_iterations=False,
+    **kwargs,
+):
+    """
     Iterative linear optimization updating the line parameters for passive
     AC and DC lines. This is helpful when line expansion is enabled. After each
     sucessful solving, line impedances and line resistance are recalculated
@@ -1380,69 +1747,82 @@ def ilopf(n, snapshots=None, msq_threshold=0.05, min_iterations=1,
     **kwargs
         Keyword arguments of the lopf function which runs at each iteration
 
-    '''
+    """
 
-    n.lines['carrier'] = n.lines.bus0.map(n.buses.carrier)
-    ext_i = get_extendable_i(n, 'Line')
+    n.lines["carrier"] = n.lines.bus0.map(n.buses.carrier)
+    ext_i = get_extendable_i(n, "Line")
     typed_i = n.lines.query('type != ""').index
     ext_untyped_i = ext_i.difference(typed_i)
     ext_typed_i = ext_i & typed_i
-    base_s_nom = (np.sqrt(3) * n.lines['type'].map(n.line_types.i_nom) *
-                  n.lines.bus0.map(n.buses.v_nom))
-    n.lines.loc[ext_typed_i, 'num_parallel'] = (n.lines.s_nom/base_s_nom)[ext_typed_i]
+    base_s_nom = (
+        np.sqrt(3)
+        * n.lines["type"].map(n.line_types.i_nom)
+        * n.lines.bus0.map(n.buses.v_nom)
+    )
+    n.lines.loc[ext_typed_i, "num_parallel"] = (n.lines.s_nom / base_s_nom)[ext_typed_i]
 
     def update_line_params(n, s_nom_prev):
         factor = n.lines.s_nom_opt / s_nom_prev
-        for attr, carrier in (('x', 'AC'), ('r', 'DC')):
-            ln_i = (n.lines.query('carrier == @carrier').index & ext_untyped_i)
+        for attr, carrier in (("x", "AC"), ("r", "DC")):
+            ln_i = n.lines.query("carrier == @carrier").index & ext_untyped_i
             n.lines.loc[ln_i, attr] /= factor[ln_i]
         ln_i = ext_i & typed_i
-        n.lines.loc[ln_i, 'num_parallel'] = (n.lines.s_nom_opt/base_s_nom)[ln_i]
+        n.lines.loc[ln_i, "num_parallel"] = (n.lines.s_nom_opt / base_s_nom)[ln_i]
 
     def msq_diff(n, s_nom_prev):
-        lines_err = np.sqrt((s_nom_prev - n.lines.s_nom_opt).pow(2).mean()) / \
-                        n.lines['s_nom_opt'].mean()
-        logger.info(f"Mean square difference after iteration {iteration} is "
-                    f"{lines_err}")
+        lines_err = (
+            np.sqrt((s_nom_prev - n.lines.s_nom_opt).pow(2).mean())
+            / n.lines["s_nom_opt"].mean()
+        )
+        logger.info(
+            f"Mean square difference after iteration {iteration} is " f"{lines_err}"
+        )
         return lines_err
 
     def save_optimal_capacities(n, iteration, status):
         for c, attr in pd.Series(nominal_attrs)[n.branch_components].items():
-            n.df(c)[f'{attr}_opt_{iteration}'] = n.df(c)[f'{attr}_opt']
+            n.df(c)[f"{attr}_opt_{iteration}"] = n.df(c)[f"{attr}_opt"]
         setattr(n, f"status_{iteration}", status)
         setattr(n, f"objective_{iteration}", n.objective)
         n.iteration = iteration
-        n.global_constraints = n.global_constraints.rename(columns={'mu': f'mu_{iteration}'})
-
+        n.global_constraints = n.global_constraints.rename(
+            columns={"mu": f"mu_{iteration}"}
+        )
 
     if track_iterations:
         for c, attr in pd.Series(nominal_attrs)[n.branch_components].items():
-            n.df(c)[f'{attr}_opt_0'] = n.df(c)[f'{attr}']
+            n.df(c)[f"{attr}_opt_0"] = n.df(c)[f"{attr}"]
     iteration = 1
-    kwargs['store_basis'] = True
+    kwargs["store_basis"] = True
     diff = msq_threshold
     while diff >= msq_threshold or iteration < min_iterations:
         if iteration > max_iterations:
-            logger.info(f'Iteration {iteration} beyond max_iterations '
-                        f'{max_iterations}. Stopping ...')
+            logger.info(
+                f"Iteration {iteration} beyond max_iterations "
+                f"{max_iterations}. Stopping ..."
+            )
             break
 
         s_nom_prev = n.lines.s_nom_opt if iteration else n.lines.s_nom
-        kwargs['warmstart'] = bool(iteration and ('basis_fn' in n.__dir__()))
+        kwargs["warmstart"] = bool(iteration and ("basis_fn" in n.__dir__()))
         status, termination_condition = network_lopf(n, snapshots, **kwargs)
-        assert status == 'ok', (f'Optimization failed with status {status}'
-                                f'and termination {termination_condition}')
+        assert status == "ok", (
+            f"Optimization failed with status {status}"
+            f"and termination {termination_condition}"
+        )
         if track_iterations:
             save_optimal_capacities(n, iteration, status)
         update_line_params(n, s_nom_prev)
         diff = msq_diff(n, s_nom_prev)
         iteration += 1
-    logger.info('Running last lopf with fixed branches, overwrite p_nom '
-                'for links and s_nom for lines')
-    ext_links_i = get_extendable_i(n, 'Link')
-    n.lines[['s_nom', 's_nom_extendable']] = n.lines['s_nom_opt'], False
-    n.links[['p_nom', 'p_nom_extendable']] = n.links['p_nom_opt'], False
-    kwargs['warmstart'] = False
+    logger.info(
+        "Running last lopf with fixed branches, overwrite p_nom "
+        "for links and s_nom for lines"
+    )
+    ext_links_i = get_extendable_i(n, "Link")
+    n.lines[["s_nom", "s_nom_extendable"]] = n.lines["s_nom_opt"], False
+    n.links[["p_nom", "p_nom_extendable"]] = n.links["p_nom_opt"], False
+    kwargs["warmstart"] = False
     network_lopf(n, snapshots, **kwargs)
-    n.lines.loc[ext_i, 's_nom_extendable'] = True
-    n.links.loc[ext_links_i, 'p_nom_extendable'] = True
+    n.lines.loc[ext_i, "s_nom_extendable"] = True
+    n.links.loc[ext_links_i, "p_nom_extendable"] = True

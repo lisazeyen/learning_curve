@@ -1,4 +1,4 @@
-run: "test_min_growth"
+run: "test_seq_EU_with_seqcost_update"
 
 logging:
   level: INFO
@@ -7,16 +7,26 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-146sn, Co2L-146sn-co2seq1] #Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-learnbatteryp0-learnbatteryxchargerp0-local, Co2L-73sn-learnH2xElectrolysisp0-learnDACp0-learnbatteryp0-learnbatteryxchargerp0-learnsolarp0-learnonwindp0-co2seq1]
+  sector_opts: [Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local-seqcost]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
-one_node: False
-select_cts: ["DE", "FR", "GB"]
-limit_growth: True
-limit_growth_lb: True
+# cluster all nodes to one representative
+one_node: True
+# only select certain countries
+select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
+# upper limit for new capacities of learning technologies
+limit_growth: False
+# lower limit for new capacities of learning technologies
+limit_growth_lb: False
+# only used for option seqcost=True, seqcost_update if the capital costs of learning
+# technologies before the first initial run should be upated according to DEA
+# data set depending on their build year
+seqcost_update: True
+# option to retrofit existing methane boilers to H2 boilers
+h2boiler_retrofit: False
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc
@@ -26,6 +36,7 @@ learning_technologies:
 
 learning_rates:
   solar: 0.24   # DEA p.262 24%,
+  solar rooftop: 0.24   # DEA p.262 24%,
   onwind: 0.10  # IRENA 2017 20%, DEA for elec and heat p. 220 assume 10%
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
@@ -103,7 +114,7 @@ costs:
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016
-  social_discountrate: 0.0 #0.02
+  social_discountrate: 0.00 #0.02
   USD2013_to_EUR2013: 0.7532 # [EUR/USD] ECB: https://www.ecb.europa.eu/stats/exchange/eurofxref/html/eurofxref-graph-usd.en.html
   marginal_cost:
     solar: 0.01
@@ -139,7 +150,7 @@ solving:
     AggFill: 0
     PreDual: 0
     NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
-    MIPGap: 0.005    # 0.5% gap between (ObjBound-ObjVal)/ObjVal
+    MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
     MIPFocus: 3
     Cuts: 2
     #ScaleFlag: 0
@@ -205,6 +216,7 @@ plotting:
     "lignite" : "#9e5a01"
     "oil" : "#262626"
     "H2" : "#ea048a"
+    "H2 Store" : "#ea048a"
     "H2 boiler" : "#fd7bc7"
     "H2 electrolysis" : "indigo"
     "H2 Electrolysis" : "indigo"

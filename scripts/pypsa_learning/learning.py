@@ -1015,11 +1015,8 @@ def define_learning_objective(n, sns):
         lifetime_w = (
             active.groupby([n.df(c).carrier, n.df(c).build_year])
             .first()
-            .reindex(learn_i, level=0)
-            .sum(axis=1)
-            .unstack()
-        )[investments]
-        weighting = lifetime_w.mul(objective_w_investment).T
+            .reindex(learn_i, level=0))
+        weighting = lifetime_w.mul(objective_w_investment).sum(axis=1).unstack()[investments].T
         terms = linexpr((weighting, cost_learning[weighting.columns]))
         write_objective(n, terms)
 
