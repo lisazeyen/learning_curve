@@ -1,4 +1,4 @@
-run: "test_seq_EU_with_seqcost_update"
+run: "test_new_co2_constraint"
 
 logging:
   level: INFO
