@@ -703,7 +703,7 @@ def set_carbon_constraints(n):
     n.add(
         "GlobalConstraint",
         "Budget",
-        type="primary_energy",
+        type="Budget",
         carrier_attribute="co2_emissions",
         sense="<=",
         constant=budget,
@@ -1329,6 +1329,7 @@ if __name__ == "__main__":
             )
         # solve linear sequential problem with cost update for technology learning
         else:
+            n.global_constraints.drop("Co2neutral", inplace=True)
             seqlopf(
                 n,
                 min_iterations=4,
