@@ -937,20 +937,8 @@ def define_global_constraints(n, sns):
             )
             vals = linexpr(coeff_val, as_pandas=False)
             rhs -= stores.carrier.map(emissions) @ stores.e_initial
-            
-            # TODO
-            lower = pd.DataFrame(0, index=coeff_val[1].index,
-                                 columns=coeff_val[1].columns)
-            upper = pd.DataFrame(rhs, index=coeff_val[1].index,
-                                 columns=coeff_val[1].columns)
-            co2_per_period = define_variables(n, lower, upper, "co2_per_period")
-            lhs, *axes = linexpr(coeff_val, (-1, co2_per_period), return_axes=True)
-            logger.info("add shadow prices per investment period")
-            define_constraints(n, lhs, "<=", 0, "GlobalConstraint",
-                               "co2_per_period", axes=axes)
-            
-            lhs = linexpr((1, co2_per_period)).sum()
-            rhs = glc.constant
+            lhs = lhs + "\n" + join_exprs(vals)
+
             con = write_constraint(n, lhs, glc.sense, rhs, axes=pd.Index([name]))
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
