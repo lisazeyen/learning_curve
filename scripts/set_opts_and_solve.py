@@ -19,7 +19,8 @@ from pypsa_learning.descriptors import (
     get_extendable_i,
     get_active_assets,
 )
-from pypsa_learning.linopt import get_var, linexpr, define_constraints
+from pypsa_learning.linopt import (get_var, linexpr, define_constraints,
+                                   write_constraint, set_conref)
 from pypsa_learning.temporal_clustering import aggregate_snapshots
 from pypsa_learning.learning import add_learning, experience_curve
 
@@ -697,8 +698,8 @@ def average_every_nhours(n, offset):
 def set_carbon_constraints(n):
     """Add global constraints for carbon emissions."""
     budget = (
-        snakemake.config["co2_budget"]["2p0"] * 1e9
-    )  # budget for + 2 Celsius for Europe
+        snakemake.config["co2_budget"]["1p5"] * 1e9
+    )  # budget for + 1.5 Celsius for Europe
     logger.info("add carbon budget of {}".format(budget))
     n.add(
         "GlobalConstraint",
@@ -841,7 +842,10 @@ def add_carbon_neutral_constraint(n, snapshots):
             lhs = linexpr(
                 (-1, final_e.shift().loc[time_valid]), (1, final_e.loc[time_valid])
             )
-            define_constraints(n, lhs, "==", rhs, "GlobalConstraint", "Co2Neutral")
+            # define_constraints(n, lhs, "==", rhs, "GlobalConstraint", "Co2Neutral",
+            #                    axes=pd.Index([name]))
+            con = write_constraint(n, lhs, "==", rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
 
 
 def add_local_res_constraint(n, snapshots):
@@ -962,6 +966,7 @@ def prepare_network(n, solve_opts=None):
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = True
+        keep_shadowprices = False
     else:
 
         def extra_functionality(n, snapshots):
@@ -973,6 +978,7 @@ def prepare_network(n, solve_opts=None):
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = False
+        keep_shadowprices = True
 
     # check for typcial periods
     if hasattr(n, "cluster"):
@@ -1032,12 +1038,13 @@ def prepare_network(n, solve_opts=None):
         n.set_snapshots(n.snapshots[:nhours])
         n.snapshot_weightings[:] = 8760.0 / nhours
 
-    return extra_functionality, skip_objective, typical_period, solver_options, n
+    return extra_functionality, skip_objective, typical_period, solver_options, keep_shadowprices, n
 
 
 # -----------------------------------------------------------------------
 def seqlopf(
     n, min_iterations=4, max_iterations=6, track_iterations=False, msq_threshold=0.05,
+    extra_functionality=None
 ):
     """
     Iterative linear optimization updating the capital costs according to learning
@@ -1224,7 +1231,6 @@ def seqlopf(
             solver_options=solver_options,
             solver_logfile=snakemake.log.solver,
             extra_functionality=extra_functionality,
-            keep_shadowprices=False,
             typical_period=typical_period,
         )
 
@@ -1251,7 +1257,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn",#"-learnH2xElectrolysisp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-seqcost",#"-learnH2xElectrolysisp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost",
             clusters="37",
         )
 
@@ -1312,6 +1318,7 @@ if __name__ == "__main__":
             skip_objective,
             typical_period,
             solver_options,
+            keep_shadowprices,
             n,
         ) = prepare_network(n)
         # solver_options["threads"] = 8
@@ -1325,18 +1332,18 @@ if __name__ == "__main__":
                 solver_options=solver_options,
                 solver_logfile=snakemake.log.solver,
                 extra_functionality=extra_functionality,
-                keep_shadowprices=True,
+                keep_shadowprices=keep_shadowprices,
                 typical_period=typical_period,
             )
         # solve linear sequential problem with cost update for technology learning
         else:
-            n.global_constraints.drop("Co2neutral", inplace=True)
             seqlopf(
                 n,
                 min_iterations=4,
                 max_iterations=6,
                 track_iterations=True,
                 msq_threshold=0.05,
+                extra_functionality=extra_functionality,
             )
 
         n.export_to_netcdf(snakemake.output[0])

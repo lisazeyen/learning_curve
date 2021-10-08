@@ -24,7 +24,7 @@ limit_growth_lb: False
 # only used for option seqcost=True, seqcost_update if the capital costs of learning
 # technologies before the first initial run should be upated according to DEA
 # data set depending on their build year
-seqcost_update: True
+seqcost_update: False
 # option to retrofit existing methane boilers to H2 boilers
 h2boiler_retrofit: False
 
