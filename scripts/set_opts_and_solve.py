@@ -1172,9 +1172,10 @@ def seqlopf(
         setattr(n, f"status_{iteration}", status)
         setattr(n, f"objective_{iteration}", n.objective)
         n.iteration = iteration
-        n.global_constraints = n.global_constraints.rename(
-            columns={"mu": f"mu_{iteration}"}
-        )
+        # n.global_constraints = n.global_constraints.rename(
+        #     columns={"mu": f"mu_{iteration}"}
+        # )
+        n.global_constraints[f"mu_{iteration}"] = n.global_constraints["mu"]
 
     def get_learn_assets_map(n):
         """Return dictionary mapping component name -> learn assets."""
@@ -1250,7 +1251,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost",
+            sector_opts="Co2L-146sn",#"-learnH2xElectrolysisp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost",
             clusters="37",
         )
 
@@ -1324,7 +1325,7 @@ if __name__ == "__main__":
                 solver_options=solver_options,
                 solver_logfile=snakemake.log.solver,
                 extra_functionality=extra_functionality,
-                keep_shadowprices=False,
+                keep_shadowprices=True,
                 typical_period=typical_period,
             )
         # solve linear sequential problem with cost update for technology learning

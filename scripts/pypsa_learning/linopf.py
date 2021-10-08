@@ -936,11 +936,23 @@ def define_global_constraints(n, sns):
                 get_var(n, "Store", "e").groupby(level=0).last()[stores.index],
             )
             vals = linexpr(coeff_val, as_pandas=False)
-            lhs = lhs + "\n" + join_exprs(vals)
             rhs -= stores.carrier.map(emissions) @ stores.e_initial
-
-        con = write_constraint(n, lhs, glc.sense, rhs, axes=pd.Index([name]))
-        set_conref(n, con, "GlobalConstraint", "mu", name)
+            
+            # TODO
+            lower = pd.DataFrame(0, index=coeff_val[1].index,
+                                 columns=coeff_val[1].columns)
+            upper = pd.DataFrame(rhs, index=coeff_val[1].index,
+                                 columns=coeff_val[1].columns)
+            co2_per_period = define_variables(n, lower, upper, "co2_per_period")
+            lhs, *axes = linexpr(coeff_val, (-1, co2_per_period), return_axes=True)
+            logger.info("add shadow prices per investment period")
+            define_constraints(n, lhs, "<=", 0, "GlobalConstraint",
+                               "co2_per_period", axes=axes)
+            
+            lhs = linexpr((1, co2_per_period)).sum()
+            rhs = glc.constant
+            con = write_constraint(n, lhs, glc.sense, rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
 
     # for line expansion we need to add a line carrier
     if any(
@@ -1301,7 +1313,7 @@ def assign_solution(
             pnl[attr] = df.reindex(n.snapshots, level=0)
         else:
             # for variables indexed with investment period not MultiIndex
-            if not isinstance(df, pd.MultiIndex):
+            if not isinstance(df.index, pd.MultiIndex):
                 df = df.reindex(n.snapshots, level=0)
             pnl[attr].loc[sns, :] = df.reindex(columns=pnl[attr].columns)
 
