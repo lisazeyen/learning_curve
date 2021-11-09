@@ -583,7 +583,7 @@ def set_assets_without_multiinvestment():
         "biogas to gas",
         "co2 vent",
         "coal",
-        "electricity distribution grid",
+        # "electricity distribution grid",
         "gas for industry",
         "gas for industry CC",
         "lignite",
@@ -591,6 +591,8 @@ def set_assets_without_multiinvestment():
         "nuclear",
         "oil",
         "process emissions",
+        # "battery discharger",
+        # "home battery discharger",
         "process emissions CC",
         "residential rural water tanks charger",
         "residential rural water tanks discharger",
@@ -619,7 +621,7 @@ def set_assets_without_multiinvestment():
         "lignite",
         "oil",
         "uranium",
-        "H2 Store",
+        # "H2 Store",
     ]
     set_fixed_assets("Store", stores_fixed)
 
@@ -629,12 +631,12 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
             "prepare_perfect_foresight",
-            sector_opts="73n-learnH2xelectrolysisp0-co2seq1",
+            sector_opts="146sn-learnH2xelectrolysisp0-co2seq1",
             clusters="37",
         )
 
@@ -672,6 +674,15 @@ if __name__ == "__main__":
     )
     # n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
     n.stores.loc[store_i, "lifetime"] = 10.0
+    
+    # adjust lifetime of BEV and V2G
+    to_adjust = ["V2G", "BEV charger"]
+    to_adjust_i = n.links[n.links.carrier.isin(to_adjust)].index
+    n.links.loc[to_adjust_i, "lifetime"] = 10
+    to_adjust = ["Li ion"]
+    to_adjust_i = n.stores[n.stores.carrier.isin(to_adjust)].index
+    n.stores.loc[to_adjust_i, "lifetime"] = 10
+    
 
     # add hydrogen boilers
     df = n.links[

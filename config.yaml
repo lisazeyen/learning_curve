@@ -1,4 +1,4 @@
-run: "test_new_co2_constraint"
+run: "test_new_costupdate"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-3h-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local-seqcost]
+  sector_opts: [Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -16,7 +16,7 @@ tech_limit: True
 # cluster all nodes to one representative
 one_node: True
 # only select certain countries
-select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
+select_cts: [] # ["DE", "FR", "ES"] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
 limit_growth: False
 # lower limit for new capacities of learning technologies
@@ -24,9 +24,13 @@ limit_growth_lb: False
 # only used for option seqcost=True, seqcost_update if the capital costs of learning
 # technologies before the first initial run should be upated according to DEA
 # data set depending on their build year
-seqcost_update: False
+seqcost_update: True
 # option to retrofit existing methane boilers to H2 boilers
 h2boiler_retrofit: False
+# number of linear segments for MIP
+segments: 5
+# temporal aggregeation for presolve
+temporal_presolve: None  # 146sn
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc
@@ -149,13 +153,13 @@ solving:
     FeasibilityTol: 1.e-5
     AggFill: 0
     PreDual: 0
-    NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
+    # - NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
-    MIPFocus: 3
-    Cuts: 2
+    # MIPFocus: 3
+    # - Cuts: 3
     #ScaleFlag: 0
-    Heuristics: 0
-    VarBranch: 3   # Mattson p.36 strong branching improved performance
+    # - Heuristics: 0
+    # - VarBranch: 3   # Mattson p.36 strong branching improved performance
     GURO_PAR_BARDENSETHRESH: 200
 
 plotting:

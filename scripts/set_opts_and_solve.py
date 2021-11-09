@@ -19,10 +19,20 @@ from pypsa_learning.descriptors import (
     get_extendable_i,
     get_active_assets,
 )
-from pypsa_learning.linopt import (get_var, linexpr, define_constraints,
-                                   write_constraint, set_conref)
+from pypsa_learning.linopt import (
+    get_var,
+    linexpr,
+    define_constraints,
+    write_constraint,
+    set_conref,
+)
 from pypsa_learning.temporal_clustering import aggregate_snapshots
-from pypsa_learning.learning import add_learning, experience_curve
+from pypsa_learning.learning import (
+    add_learning,
+    experience_curve,
+    get_linear_interpolation_points,
+    get_slope,
+)
 
 from distutils.version import LooseVersion
 
@@ -578,9 +588,9 @@ def set_scenario_opts(n, opts):
                 if tech == "DAC":
                     n.carriers.loc["DAC", "max_capacity"] = 120e3 / factor
                 if tech == "solar":
-                    n.carriers.loc["solar", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["solar", "max_capacity"] = 4e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 4e6 / factor
         if "fcev" in o:
             fcev_fraction = float(o.replace("fcev", "")) / 100
             n = adjust_land_transport_share(n, fcev_fraction)
@@ -958,7 +968,9 @@ def prepare_network(n, solve_opts=None):
 
         def extra_functionality(n, snapshots):
             add_battery_constraints(n)
-            add_learning(n, snapshots)
+            add_learning(
+                n, snapshots, segments=snakemake.config["segments"], time_delay=True
+            )
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
@@ -1038,13 +1050,24 @@ def prepare_network(n, solve_opts=None):
         n.set_snapshots(n.snapshots[:nhours])
         n.snapshot_weightings[:] = 8760.0 / nhours
 
-    return extra_functionality, skip_objective, typical_period, solver_options, keep_shadowprices, n
+    return (
+        extra_functionality,
+        skip_objective,
+        typical_period,
+        solver_options,
+        keep_shadowprices,
+        n,
+    )
 
 
 # -----------------------------------------------------------------------
 def seqlopf(
-    n, min_iterations=4, max_iterations=6, track_iterations=False, msq_threshold=0.05,
-    extra_functionality=None
+    n,
+    min_iterations=4,
+    max_iterations=6,
+    track_iterations=False,
+    msq_threshold=0.05,
+    extra_functionality=None,
 ):
     """
     Iterative linear optimization updating the capital costs according to learning
@@ -1131,7 +1154,25 @@ def seqlopf(
             .add(initial_cum_cap, axis=0)
         )
 
-        # investment costs
+        # (a) investment costs by piecewise linearisation
+        x_high = n.carriers.loc[learn_carriers, "max_capacity"]
+        segments = snakemake.config["segments"]
+        points = get_linear_interpolation_points(n, initial_cum_cap, x_high, segments)
+        slope = get_slope(points)
+
+        cost = pd.DataFrame(columns=learn_carriers)
+        for carrier in learn_carriers:
+            cost[carrier] = (
+                cum_p_nom.loc[carrier]
+                .apply(
+                    lambda x: points.xs("x_fit", level=1, axis=1)[carrier][
+                        (x >= points.xs("x_fit", level=1, axis=1)[carrier])
+                    ].index[-1]
+                )
+                .map(slope[carrier])
+            )
+
+        # (b) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
             lambda x: experience_curve(
                 x,
@@ -1143,9 +1184,7 @@ def seqlopf(
         )
 
         return pd.Series(
-            n.df(c)
-            .set_index(["carrier", "build_year"])
-            .index.map(capital_cost.stack()),
+            n.df(c).set_index(["carrier", "build_year"]).index.map(cost.T.stack()),
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
 
@@ -1245,6 +1284,7 @@ def seqlopf(
         update_cost_params(n, prev)
         # calculate difference between previous and current result
         diff = msq_diff(n, prev)
+        del n.start_fn
         iteration += 1
 
 
@@ -1252,12 +1292,13 @@ def seqlopf(
 if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
+
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-seqcost",#"-learnH2xElectrolysisp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost",
+            sector_opts="Co2L-73sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local",
             clusters="37",
         )
 
@@ -1279,8 +1320,6 @@ if __name__ == "__main__":
     global_capacity, p_nom_max_limit, global_factor = prepare_data()
     # set scenario options
     n = set_scenario_opts(n, opts)
-    # aggregate network temporal
-    n = set_temporal_aggregation(n, opts)
 
     # carbon emission constraints
     if "Co2L" in opts:
@@ -1304,6 +1343,11 @@ if __name__ == "__main__":
     n.stores.loc[bev_dsm_i, "e_nom_extendable"] = True
     n.stores.loc[bev_dsm_i, "carrier"] = "battery"
 
+    # aggregate network temporal
+    if snakemake.config["temporal_presolve"] != "None":
+        m = set_temporal_aggregation(n.copy(), [snakemake.config["temporal_presolve"]])
+    n = set_temporal_aggregation(n, opts)
+
     # solve network
     logging.basicConfig(
         filename=snakemake.log.python, level=snakemake.config["logging"]["level"]
@@ -1312,6 +1356,17 @@ if __name__ == "__main__":
     with memory_logger(
         filename=getattr(snakemake.log, "memory", None), interval=30.0
     ) as mem:
+
+        if snakemake.config["temporal_presolve"] != "None":
+
+            (
+                extra_functionality_pre,
+                skip_objective,
+                typical_period,
+                solver_options,
+                keep_shadowprices,
+                m,
+            ) = prepare_network(m)
 
         (
             extra_functionality,
@@ -1322,8 +1377,42 @@ if __name__ == "__main__":
             n,
         ) = prepare_network(n)
         # solver_options["threads"] = 8
+        #%%
 
         if not "seqcost" in opts:
+            # first run with low temporal resolution -----
+            if snakemake.config["temporal_presolve"] != "None":
+
+                logger.info(
+                    "Solve network with lower temporal resolution \n"
+                    "***********************************************************"
+                )
+
+                m.lopf(
+                    pyomo=False,
+                    solver_name="gurobi",
+                    skip_objective=skip_objective,
+                    multi_investment_periods=True,
+                    solver_options=solver_options,
+                    solver_logfile=snakemake.log.solver,
+                    extra_functionality=extra_functionality_pre,
+                    keep_shadowprices=keep_shadowprices,
+                    typical_period=typical_period,
+                    keep_references=True,
+                    # warmstart=True
+                    # store_basis=True,
+                )
+                n.start_fn = m.start_fn
+
+                n.mapping = m.vars
+                solver_options["NodeMethod"] = 2
+
+            logger.info(
+                "Solve network with {} snapshots \n"
+                "***********************************************************".format(
+                    len(n.snapshots)
+                )
+            )
             n.lopf(
                 pyomo=False,
                 solver_name="gurobi",
@@ -1334,6 +1423,9 @@ if __name__ == "__main__":
                 extra_functionality=extra_functionality,
                 keep_shadowprices=keep_shadowprices,
                 typical_period=typical_period,
+                keep_references=True,
+                # warmstart=True,
+                # store_basis=True,
             )
         # solve linear sequential problem with cost update for technology learning
         else:

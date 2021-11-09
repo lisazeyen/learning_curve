@@ -53,7 +53,7 @@ rule set_opts_and_solve:
         python="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_python.log",
         memory="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory.log"
     benchmark: "results/"+ config['run'] + "/benchmarks/_network/elec_s_EU_{sector_opts}_sec"
-    threads: 4
+    threads: 8
     resources: mem_mb= 130000# 30000
     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
     script: "scripts/set_opts_and_solve.py"
