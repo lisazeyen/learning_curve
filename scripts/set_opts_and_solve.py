@@ -580,9 +580,9 @@ def set_scenario_opts(n, opts):
                     )
                 # TODO
                 if tech == "H2 electrolysis":
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 1.2e6 / factor
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 1.6e6 / factor
                 if tech == "H2 Electrolysis":
-                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 1.2e6 / factor
+                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 1.6e6 / factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
@@ -590,7 +590,7 @@ def set_scenario_opts(n, opts):
                 if tech == "solar":
                     n.carriers.loc["solar", "max_capacity"] = 4e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 4e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 4.5e6 / factor
         if "fcev" in o:
             fcev_fraction = float(o.replace("fcev", "")) / 100
             n = adjust_land_transport_share(n, fcev_fraction)
@@ -969,7 +969,10 @@ def prepare_network(n, solve_opts=None):
         def extra_functionality(n, snapshots):
             add_battery_constraints(n)
             add_learning(
-                n, snapshots, segments=snakemake.config["segments"], time_delay=True
+                n,
+                snapshots,
+                segments=snakemake.config["segments"],
+                time_delay=snakemake.config["time_delay"],
             )
             add_carbon_neutral_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
@@ -1298,7 +1301,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-73sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local",
             clusters="37",
         )
 
@@ -1433,7 +1436,7 @@ if __name__ == "__main__":
                 n,
                 min_iterations=4,
                 max_iterations=6,
-                track_iterations=True,
+                track_iterations=False,
                 msq_threshold=0.05,
                 extra_functionality=extra_functionality,
             )

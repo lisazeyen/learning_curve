@@ -208,7 +208,9 @@ def experience_curve(cumulative_capacity, learning_rate, c0, initial_capacity=1)
     return c0 / (cumulative_capacity / initial_capacity) ** alpha
 
 
-def cumulative_cost_curve(cumulative_capacity, learning_rate, c0, initial_capacity=1):
+def cumulative_cost_curve(
+    cumulative_capacity, learning_rate, c0, initial_capacity=1, with_previous_TC=False
+):
     """Define cumulative cost depending on cumulative capacity.
 
     Using directly the learning curve (eq 1)
@@ -240,6 +242,10 @@ def cumulative_cost_curve(cumulative_capacity, learning_rate, c0, initial_capaci
 
     # cost at given cumulative capacity
     cost = experience_curve(cumulative_capacity, learning_rate, c0, initial_capacity)
+
+    # account for previous investments
+    if with_previous_TC:
+        c0 = 0
 
     if alpha == 1:
         return (
@@ -379,7 +385,9 @@ def get_linear_interpolation_points(n, x_low, x_high, segments):
         )
         # cumulative costs
         y_cum[carrier] = x[carrier].apply(
-            lambda x: cumulative_cost_curve(x, learning_rate, c0, e0)
+            lambda x: cumulative_cost_curve(
+                x, learning_rate, c0, e0, with_previous_TC=True
+            )
         )
 
         # get interpolation points

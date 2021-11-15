@@ -1,4 +1,4 @@
-run: "test_new_costupdate"
+run: "test_time_delay"
 
 logging:
   level: INFO
@@ -7,16 +7,16 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost]
+  sector_opts: [Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
-one_node: True
+one_node: False # True
 # only select certain countries
-select_cts: [] # ["DE", "FR", "ES"] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
+select_cts: ["DE", "FR", "ES", "IT"] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
 limit_growth: False
 # lower limit for new capacities of learning technologies
@@ -28,9 +28,12 @@ seqcost_update: True
 # option to retrofit existing methane boilers to H2 boilers
 h2boiler_retrofit: False
 # number of linear segments for MIP
-segments: 5
+segments: 4
 # temporal aggregeation for presolve
 temporal_presolve: None  # 146sn
+# add time delay for learning, only capacities of the previous investment
+# periods are considered for cost reduction
+time_delay: True
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc
