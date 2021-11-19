@@ -562,10 +562,17 @@ def set_scenario_opts(n, opts):
                     ext_i = get_extendable_i(n, c)
                     if "carrier" not in n.df(c) or n.df(c).empty:
                         continue
+                    if tech == "offwind" and c == "Generator":
+                        rename_offwind = {
+                            "offwind-dc": "offwind",
+                            "offwind-ac": "offwind",
+                        }
+                        n.df(c).carrier.replace(rename_offwind, inplace=True)
                     learn_assets = n.df(c)[n.df(c)["carrier"] == tech].index
                     learn_assets = ext_i.intersection(
                         n.df(c)[n.df(c)["carrier"] == tech].index
                     )
+
                     if learn_assets.empty:
                         continue
                     index = (
@@ -575,20 +582,26 @@ def set_scenario_opts(n, opts):
                         ]
                         .index
                     )
+                    # subtract the non-learning part of the offshore wind costs
+                    if tech == "offwind":
+                        n.df(c).loc[index, "capital_cost"] = (
+                            n.df(c).loc[index, "capital_cost"]
+                            - n.df(c).loc[index, "nolearning_cost"]
+                        )
                     n.carriers.loc[tech, "initial_cost"] = (
                         n.df(c).loc[index, "capital_cost"].mean()
                     )
                 # TODO
                 if tech == "H2 electrolysis":
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 1.6e6 / factor
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 2e6 / factor
                 if tech == "H2 Electrolysis":
-                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 1.6e6 / factor
+                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 2e6 / factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
                     n.carriers.loc["DAC", "max_capacity"] = 120e3 / factor
                 if tech == "solar":
-                    n.carriers.loc["solar", "max_capacity"] = 4e6 / factor
+                    n.carriers.loc["solar", "max_capacity"] = 5e6 / factor
                 if tech == "onwind":
                     n.carriers.loc["onwind", "max_capacity"] = 4.5e6 / factor
         if "fcev" in o:
@@ -1134,7 +1147,7 @@ def seqlopf(
 
         return n
 
-    def get_new_cost(n, c):
+    def get_new_cost(n, c, time_delay=True):
         """Calculate new cost depending on installed capacities."""
         assets = n.df(c).loc[prev[c].index]
         learn_carriers = assets.carrier.unique()
@@ -1165,15 +1178,14 @@ def seqlopf(
 
         cost = pd.DataFrame(columns=learn_carriers)
         for carrier in learn_carriers:
+            x_fit = points.xs("x_fit", level=1, axis=1)[carrier]
             cost[carrier] = (
                 cum_p_nom.loc[carrier]
-                .apply(
-                    lambda x: points.xs("x_fit", level=1, axis=1)[carrier][
-                        (x >= points.xs("x_fit", level=1, axis=1)[carrier])
-                    ].index[-1]
-                )
+                .apply(lambda x: np.searchsorted(x_fit, x, side="right") - 1)
                 .map(slope[carrier])
             )
+            if time_delay:
+                cost = cost.shift().fillna(slope.loc[0])
 
         # (b) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
@@ -1217,14 +1229,13 @@ def seqlopf(
     def save_capital_cost(n, prev, iteration, status):
         """Save optmised capacities of each iteration step."""
         for c in prev.keys():
-            n.df(c)[f"capital_cost_{iteration}"] = n.df(c)["capital_cost"]
+            n.df(c)["capital_cost_{}".format("I" * iteration)] = n.df(c)["capital_cost"]
         setattr(n, f"status_{iteration}", status)
         setattr(n, f"objective_{iteration}", n.objective)
         n.iteration = iteration
-        # n.global_constraints = n.global_constraints.rename(
-        #     columns={"mu": f"mu_{iteration}"}
-        # )
-        n.global_constraints[f"mu_{iteration}"] = n.global_constraints["mu"]
+        n.global_constraints["mu_{}".format("I" * iteration)] = n.global_constraints[
+            "mu"
+        ]
 
     def get_learn_assets_map(n):
         """Return dictionary mapping component name -> learn assets."""
@@ -1301,7 +1312,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local",
+            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnsolarp0-learnoffwindp0",
             clusters="37",
         )
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from vresutils.costdata import annuity
-from learning import (
+from pypsa_learning.learning import (
     experience_curve,
     cumulative_cost_curve,
     piecewise_linear,
@@ -818,7 +818,10 @@ def learning_cost_vs_curve():
 
         # get interpolation points (number of points = line segments + 1)
         points = piecewise_linear(
-            y_cum.iloc[:, 0], 5, learning_rate, c0, initial_capacity, scenario[-1]
+            caps.iloc[:, 0],
+            y_cum.iloc[:, 0],
+            snakemake.config["segments"],
+            scenario[-1],
         )
         # get interpolation of specific investment costs
         interpolated_costs = get_slope(points).rename(index=lambda x: x + 1)
@@ -992,8 +995,8 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(

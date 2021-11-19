@@ -18,6 +18,7 @@ from vresutils.costdata import annuity
 import re
 
 from distutils.version import LooseVersion
+import xarray as xr
 
 pd_version = LooseVersion(pd.__version__)
 agg_group_kwargs = dict(numeric_only=False) if pd_version >= "1.3" else {}
@@ -356,6 +357,13 @@ def prepare_costs_all_years(
 def update_costs(n, costs, years):
     """Update all costs according to costs in the first investment period."""
 
+    logger.info(
+        "\n***********************************************************\n"
+        "Update capital cost, marginal cost and efficiencies according"
+        " to DEA assumptions and build year.\n"
+        "***********************************************************\n"
+    )
+
     def get_first_attr(df, attr):
         map_dict = (
             df[attr]
@@ -398,6 +406,97 @@ def update_costs(n, costs, years):
     n.links.loc[h2_elec_i, "capital_cost"] = costs[years[0]].loc[
         "electrolysis", "fixed"
     ]
+
+    # update offshore wind costs with connection costs
+    update_offwind_costs(n, costs, years)
+
+
+def update_offwind_costs(n, costs, years):
+    """
+    Update costs for offshore-wind generators added with pypsa-eur to those
+    cost in the planning year
+    """
+    logger.info(
+        "\n***********************************************************\n"
+        "Update capital cost and connection costs of offshore wind farms.\n"
+        "***********************************************************\n"
+    )
+    # assign clustered bus
+    # map initial network -> simplified network
+    busmap_s = pd.read_csv(snakemake.input.busmap_s, index_col=0).squeeze()
+    busmap_s.index = busmap_s.index.astype(str)
+    busmap_s = busmap_s.astype(str)
+    # map simplified network -> clustered network
+    busmap = pd.read_csv(snakemake.input.busmap, index_col=0).squeeze()
+    busmap.index = busmap.index.astype(str)
+    busmap = busmap.astype(str)
+    # map initial network -> clustered network
+    clustermaps = busmap_s.map(busmap)
+
+    # code adapted from pypsa-eur/scripts/add_electricity.py
+    for connection in ["dc", "ac"]:
+        tech = "offwind-" + connection
+        profile = snakemake.input["profile_offwind_" + connection]
+        # costs for different investment periods
+        cost_submarine = pd.concat(costs).xs(tech + "-connection-submarine", level=1)[
+            "fixed"
+        ]
+        cost_underground = pd.concat(costs).xs(
+            tech + "-connection-underground", level=1
+        )["fixed"]
+
+        with xr.open_dataset(profile) as ds:
+            underwater_fraction = ds["underwater_fraction"].to_pandas()
+            # expand series for underwater fraction
+            underwater_fraction_t = expand_series(underwater_fraction, years)
+            # average distance
+            av_dis_t = expand_series(ds["average_distance"].to_pandas(), years)
+            # connection costs
+            connection_cost = (
+                snakemake.config["costs"]["lines"]["length_factor"]
+                * av_dis_t
+                * (
+                    underwater_fraction_t.mul(cost_submarine)
+                    + (1.0 - underwater_fraction_t).mul(cost_underground)
+                )
+            )
+
+            # convert to aggregated clusters with weighting
+            weight = ds["weight"].to_pandas()
+
+            # e.g. clusters == 37m means that VRE generators are left
+            # at clustering of simplified network, but that they are
+            # connected to 37-node network
+            if snakemake.wildcards.clusters[-1:] == "m":
+                genmap = busmap_s
+            else:
+                genmap = clustermaps
+
+            connection_cost = (
+                connection_cost.mul(weight, axis=0)
+                .groupby(genmap)
+                .sum()
+                .div(weight.groupby(genmap).sum(), axis=0)
+            )
+            # add station costs where no learning is assumed
+            no_learn_cost = connection_cost.add(
+                pd.concat(costs).xs("offwind-ac-station", level=1)["fixed"]
+            )
+
+            gen_b = n.generators.carrier == tech
+            gen_i = n.generators[gen_b].set_index(["bus", "build_year"]).index
+            n.generators.loc[gen_b, "nolearning_cost"] = (
+                no_learn_cost.stack().reindex(gen_i).values
+            )
+            # costs with technology learning
+            learn_costs = pd.concat(costs).xs("offwind", level=1)["fixed"]
+            learn_costs_gen = n.generators[gen_b].build_year.map(learn_costs)
+
+            capital_cost = learn_costs_gen + n.generators.loc[gen_b, "nolearning_cost"]
+
+            n.generators.loc[
+                gen_b, "capital_cost"
+            ] = capital_cost  # .rename(index=lambda node: node + " " + tech)
 
 
 def update_capacities(n):
@@ -674,7 +773,7 @@ if __name__ == "__main__":
     )
     # n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
     n.stores.loc[store_i, "lifetime"] = 10.0
-    
+
     # adjust lifetime of BEV and V2G
     to_adjust = ["V2G", "BEV charger"]
     to_adjust_i = n.links[n.links.carrier.isin(to_adjust)].index
@@ -682,7 +781,6 @@ if __name__ == "__main__":
     to_adjust = ["Li ion"]
     to_adjust_i = n.stores[n.stores.carrier.isin(to_adjust)].index
     n.stores.loc[to_adjust_i, "lifetime"] = 10
-    
 
     # add hydrogen boilers
     df = n.links[

@@ -1090,7 +1090,7 @@ if __name__ == "__main__":
         import os
 
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
@@ -1099,7 +1099,7 @@ if __name__ == "__main__":
             clusters="37",
         )
         os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-        os.chdir("/home/lisa/Documents/learning_curve/")
+        # os.chdir("/home/lisa/Documents/learning_curve/")
 
     networks_dict = {
         (clusters, lv, sector_opt): "results/"

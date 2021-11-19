@@ -47,6 +47,7 @@ learning_rates:
   onwind: 0.10  # IRENA 2017 20%, DEA for elec and heat p. 220 assume 10%
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
+  offwind: 0.16
   H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 Electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 fuel cell: 0.16
@@ -117,7 +118,7 @@ sector:
     2050: 0.29
 
 costs:
-  update_costs: False
+  update_costs: True
   year: 2020
   lifetime: 25
   discountrate: 0.07 # From a Lion Hirth paper, also reflects average of Noothout et al 2016

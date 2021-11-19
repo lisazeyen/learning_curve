@@ -289,7 +289,7 @@ def get_cumulative_cap_from_cum_cost(cumulative_cost, learning_rate, c0, e0):
     )
 
 
-def piecewise_linear(y, segments, learning_rate, c0, e0, carrier):
+def piecewise_linear(x, y, segments, carrier):
     """Define interpolation points of piecewise-linearised learning curve.
 
     The higher the number of segments, the more precise is the solution. But
@@ -336,9 +336,9 @@ def piecewise_linear(y, segments, learning_rate, c0, e0, carrier):
         + [y.max()]
     )
     y_fit = pd.Series(y_fit_data, index=np.arange(segments + 1))
-    x_fit = y_fit.apply(
-        lambda x: get_cumulative_cap_from_cum_cost(x, learning_rate, c0, e0)
-    )
+    index = y_fit.apply(lambda x: np.searchsorted(y, x, side="left"))
+    x_fit = x.iloc[index]
+    y_fit = y.iloc[index]
     fit = pd.concat([x_fit, y_fit], axis=1).reset_index(drop=True)
     fit.columns = pd.MultiIndex.from_product([[carrier], ["x_fit", "y_fit"]])
 
@@ -392,12 +392,7 @@ def get_linear_interpolation_points(n, x_low, x_high, segments):
 
         # get interpolation points
         points = pd.concat(
-            [
-                points,
-                piecewise_linear(
-                    y_cum[carrier], segments, learning_rate, c0, e0, carrier
-                ),
-            ],
+            [points, piecewise_linear(x[carrier], y_cum[carrier], segments, carrier)],
             axis=1,
         )
 
@@ -1106,6 +1101,36 @@ def define_learning_objective(n, sns):
         )
         terms = linexpr((weighting, cost_learning[weighting.columns]))
         write_objective(n, terms)
+
+        # (iii) costs without learning from offshore wind
+        if "offwind" in learn_i:
+            logger.info("\n Add connection cost for offshore without learning")
+            c = "Generator"
+            attr = "p_nom"
+            ext_i = get_extendable_i(n, c)
+            offwind_assets = ext_i.intersection(
+                n.df(c)[n.df(c)["carrier"] == "offwind"].index
+            )
+
+            cost = n.df(c).loc[offwind_assets, "nolearning_cost"]
+            if cost.empty:
+                continue
+            active = pd.concat(
+                [
+                    get_active_assets(n, c, inv_p, sns).rename(inv_p)
+                    for inv_p in investments
+                ],
+                axis=1,
+            ).astype(int)
+
+            caps = expand_series(
+                get_var(n, c, attr).loc[offwind_assets], investments
+            ).loc[offwind_assets]
+            cost_weighted = (
+                active.loc[offwind_assets].mul(cost, axis=0).mul(objective_w_investment)
+            )
+            terms = linexpr((cost_weighted, caps))
+            write_objective(n, terms)
 
 
 def add_learning(n, snapshots, segments=5, time_delay=False):

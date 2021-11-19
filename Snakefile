@@ -30,6 +30,10 @@ rule prepare_perfect_foresight:
         costs="data/costs/",
         p_max_pu="data/generators_p_max_pu.csv",
         generators_costs="data/generators_costs.csv",
+        busmap_s="data/busmap_elec_s.csv",
+        busmap="data/busmap_elec_s_37.csv",
+        profile_offwind_ac="data/profile_offwind-ac.nc",
+        profile_offwind_dc="data/profile_offwind-dc.nc",
     output: "results/" + config['run'] + "/prenetworks/elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_brownfield_all_years.nc"
     threads: 2
     resources: mem_mb=10000
