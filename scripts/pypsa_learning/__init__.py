@@ -1,5 +1,3 @@
-
-
 ## Copyright 2015-2019 Tom Brown (KIT, FIAS), Jonas Hoersch (KIT,
 ## FIAS), David Schlachtberger (FIAS)
 
@@ -23,11 +21,22 @@ Grid calculation library.
 """
 
 from . import components, descriptors
-from . import (pf, opf, opt, plot, networkclustering, io, contingency, geo,
-               stats, linopf, linopt)
+from . import (
+    pf,
+    opf,
+    opt,
+    plot,
+    networkclustering,
+    io,
+    contingency,
+    geo,
+    stats,
+    linopf,
+    linopt,
+)
 
 from .components import Network, SubNetwork
 
-__version__ = "0.17.1"
+__version__ = "0.19.0"
 __author__ = "Tom Brown (KIT, FIAS), Jonas Hoersch (KIT, FIAS), Fabian Hofmann (FIAS), Fabian Neumann (KIT), David Schlachtberger (FIAS)"
 __copyright__ = "Copyright 2015-2020 Tom Brown (KIT, FIAS), Jonas Hoersch (KIT, FIAS), Fabian Hofmann (FIAS), Fabian Neumann (KIT), David Schlachtberger (FIAS), GNU GPL 3"

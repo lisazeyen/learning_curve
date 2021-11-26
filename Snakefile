@@ -30,10 +30,6 @@ rule prepare_perfect_foresight:
         costs="data/costs/",
         p_max_pu="data/generators_p_max_pu.csv",
         generators_costs="data/generators_costs.csv",
-        busmap_s="data/busmap_elec_s.csv",
-        busmap="data/busmap_elec_s_37.csv",
-        profile_offwind_ac="data/profile_offwind-ac.nc",
-        profile_offwind_dc="data/profile_offwind-dc.nc",
     output: "results/" + config['run'] + "/prenetworks/elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_brownfield_all_years.nc"
     threads: 2
     resources: mem_mb=10000
@@ -50,15 +46,16 @@ rule set_opts_and_solve:
         industrial_demand="data/industrial_demand.csv",
         nodal_energy_totals="data/nodal_energy_totals.csv",
         costs="data/costs/",
-    output: "results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc"
+    output:
+        network="results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc",
     shadow: "shallow"
     log:
         solver="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_solver.log",
         python="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_python.log",
         memory="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory.log"
     benchmark: "results/"+ config['run'] + "/benchmarks/_network/elec_s_EU_{sector_opts}_sec"
-    threads: 8
-    resources: mem_mb= 130000# 30000
+    threads: 14
+    resources: mem_mb= 125000 # 30000
     # group: "solve" # with group, threads is ignored https://bitbucket.org/snakemake/snakemake/issues/971/group-job-description-does-not-contain
     script: "scripts/set_opts_and_solve.py"
 

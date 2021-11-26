@@ -117,7 +117,7 @@ import os
 
 os.environ["NUMEXPR_MAX_THREADS"] = str(snakemake.threads)
 
-#%% FUNCTIONS ---------------------------------------------------------------
+# FUNCTIONS ---------------------------------------------------------------
 aggregate_dict = {
     "p_nom": "sum",
     "p_nom_max": "sum",
@@ -599,21 +599,23 @@ def set_scenario_opts(n, opts):
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
-                    n.carriers.loc["DAC", "max_capacity"] = 120e3 / factor
+                    n.carriers.loc["DAC", "max_capacity"] = 150e3 / factor
                 if tech == "solar":
                     n.carriers.loc["solar", "max_capacity"] = 5e6 / factor
                 if tech == "onwind":
                     n.carriers.loc["onwind", "max_capacity"] = 4.5e6 / factor
+                if tech == "offwind":
+                    n.carriers.loc["onwind", "max_capacity"] = 3e6 / factor
         if "fcev" in o:
             fcev_fraction = float(o.replace("fcev", "")) / 100
             n = adjust_land_transport_share(n, fcev_fraction)
 
         if "co2seq" in o:
             factor = float(o.replace("co2seq", ""))
-            n.stores.loc["co2 stored-2020", "e_nom_max"] *= factor
+            n.stores.loc["co2 stored-{}".format(years[0]), "e_nom_max"] *= factor
             logger.info(
                 "Total CO2 sequestration potential is set to {}".format(
-                    n.stores.loc["co2 stored-2020", "e_nom_max"]
+                    n.stores.loc["co2 stored-{}".format(years[0]), "e_nom_max"]
                 )
             )
     if "local" in opts:
@@ -913,7 +915,7 @@ def add_local_res_constraint(n, snapshots):
         p_nom_max_t.mul(ext_and_active)
         .groupby([n.df(c).carrier, n.df(c).country], axis=1)
         .max(**agg_group_kwargs)
-    )
+    ).reindex(columns=lhs.columns)
 
     define_constraints(n, lhs, "<=", rhs, "GlobalConstraint", "res_limit")
 
@@ -1084,6 +1086,7 @@ def seqlopf(
     track_iterations=False,
     msq_threshold=0.05,
     extra_functionality=None,
+    time_delay=True,
 ):
     """
     Iterative linear optimization updating the capital costs according to learning
@@ -1183,9 +1186,10 @@ def seqlopf(
                 cum_p_nom.loc[carrier]
                 .apply(lambda x: np.searchsorted(x_fit, x, side="right") - 1)
                 .map(slope[carrier])
+                .fillna(slope[carrier].iloc[-1])
             )
-            if time_delay:
-                cost = cost.shift().fillna(slope.loc[0])
+        if time_delay:
+            cost = cost.shift().fillna(slope.loc[0])
 
         # (b) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
@@ -1203,12 +1207,12 @@ def seqlopf(
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
 
-    def update_cost_params(n, prev):
+    def update_cost_params(n, prev, time_delay):
         """Update cost parameters according to installed capacities."""
         for c in prev.keys():
 
             # overwrite cost assumptions
-            n.df(c)["capital_cost"] = get_new_cost(n, c)
+            n.df(c)["capital_cost"] = get_new_cost(n, c, time_delay)
 
     def msq_diff(n, prev):
         """Compare previous investment costs with current."""
@@ -1229,13 +1233,11 @@ def seqlopf(
     def save_capital_cost(n, prev, iteration, status):
         """Save optmised capacities of each iteration step."""
         for c in prev.keys():
-            n.df(c)["capital_cost_{}".format("I" * iteration)] = n.df(c)["capital_cost"]
+            n.df(c)["capital_cost_{}".format(iteration)] = n.df(c)["capital_cost"]
         setattr(n, f"status_{iteration}", status)
         setattr(n, f"objective_{iteration}", n.objective)
         n.iteration = iteration
-        n.global_constraints["mu_{}".format("I" * iteration)] = n.global_constraints[
-            "mu"
-        ]
+        n.global_constraints["mu_{}".format(iteration)] = n.global_constraints["mu"]
 
     def get_learn_assets_map(n):
         """Return dictionary mapping component name -> learn assets."""
@@ -1295,7 +1297,7 @@ def seqlopf(
         if track_iterations:
             save_capital_cost(n, prev, iteration, status)
         # update capital costs depending on installed capacities
-        update_cost_params(n, prev)
+        update_cost_params(n, prev, time_delay)
         # calculate difference between previous and current result
         diff = msq_diff(n, prev)
         del n.start_fn
@@ -1312,7 +1314,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnsolarp0-learnoffwindp0",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-local-seqcost",
             clusters="37",
         )
 
@@ -1340,7 +1342,7 @@ if __name__ == "__main__":
         n = set_carbon_constraints(n)
 
     # set max growth for renewables
-    if snakemake.config["limit_growth"]:
+    if snakemake.config["limit_growth"] or "limitgrowth" in opts:
         n = set_max_growth(n)
 
     # set min growth for renewables
@@ -1362,6 +1364,8 @@ if __name__ == "__main__":
         m = set_temporal_aggregation(n.copy(), [snakemake.config["temporal_presolve"]])
     n = set_temporal_aggregation(n, opts)
 
+    # time delay learning
+    time_delay = snakemake.config["time_delay"] or "timedelay" in opts
     # solve network
     logging.basicConfig(
         filename=snakemake.log.python, level=snakemake.config["logging"]["level"]
@@ -1391,7 +1395,7 @@ if __name__ == "__main__":
             n,
         ) = prepare_network(n)
         # solver_options["threads"] = 8
-        #%%
+        #
 
         if not "seqcost" in opts:
             # first run with low temporal resolution -----
@@ -1450,8 +1454,10 @@ if __name__ == "__main__":
                 track_iterations=False,
                 msq_threshold=0.05,
                 extra_functionality=extra_functionality,
+                time_delay=time_delay,
             )
+            n.buses_t.v_ang = n.buses_t.v_ang.astype(float)
 
-        n.export_to_netcdf(snakemake.output[0])
+        n.export_to_netcdf(snakemake.output.network)
 
     logger.info("Maximum memory usage: {}".format(mem.mem_usage))

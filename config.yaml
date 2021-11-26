@@ -1,4 +1,4 @@
-run: "test_time_delay"
+run: "EU_time_noFuelCell"
 
 logging:
   level: INFO
@@ -7,16 +7,16 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-local, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1-seqcost, Co2L-146sn-learnH2xElectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-learnonwindp0-co2seq1]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-local, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-seqcost, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-local-seqcost, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-local-seqcost-limitgrowth]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
-one_node: False # True
+one_node: True
 # only select certain countries
-select_cts: ["DE", "FR", "ES", "IT"] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
+select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
 limit_growth: False
 # lower limit for new capacities of learning technologies
@@ -30,7 +30,7 @@ h2boiler_retrofit: False
 # number of linear segments for MIP
 segments: 4
 # temporal aggregeation for presolve
-temporal_presolve: None  # 146sn
+temporal_presolve: None # 73sn
 # add time delay for learning, only capacities of the previous investment
 # periods are considered for cost reduction
 time_delay: True
@@ -47,7 +47,6 @@ learning_rates:
   onwind: 0.10  # IRENA 2017 20%, DEA for elec and heat p. 220 assume 10%
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
-  offwind: 0.16
   H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 Electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 fuel cell: 0.16
@@ -157,7 +156,8 @@ solving:
     FeasibilityTol: 1.e-5
     AggFill: 0
     PreDual: 0
-    # - NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
+    # NoRelHeurTime: 300
+    NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
     # MIPFocus: 3
     # - Cuts: 3

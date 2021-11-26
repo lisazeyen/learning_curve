@@ -156,6 +156,14 @@ pypsa_to_techbase = {
     "DAC": "direct air capture",
 }
 
+heat_carriers = {
+    "residential rural": "decentral",
+    "services rural": "decentral",
+    "urban central": "central",
+    "residential urban decentral": "decentral",
+    "services urban decentral": "decentral",
+}
+
 # FUNCTIONS ----------------------------------------------------------------
 def concat_networks(years, with_time=True, snapshots=None, investment_periods=None):
     """Concat given pypsa networks and adds build_year.
@@ -354,15 +362,36 @@ def prepare_costs_all_years(
     return all_costs
 
 
-def update_costs(n, costs, years):
+def update_costs(n, costs_dict, years, update):
     """Update all costs according to costs in the first investment period."""
 
     logger.info(
         "\n***********************************************************\n"
-        "Update capital cost, marginal cost and efficiencies according"
-        " to DEA assumptions and build year.\n"
+        "Update capital cost. If no cost update keep efficiencies and marginal"
+        "cost on first investment period assumptions. \n"
         "***********************************************************\n"
     )
+
+    costs = pd.concat(costs_dict)
+
+    def relabel_pypsa_to_techbase(label):
+        """Rename pypsa tech names to names in database."""
+        for pypsa_heat_c, tech_heat_c in heat_carriers.items():
+            label = label.replace(pypsa_heat_c, tech_heat_c)
+        if label in pypsa_to_techbase.keys():
+            label = pypsa_to_techbase[label]
+        return label
+
+    def get_new_attr(df, attr, costs):
+        filler = df[attr]
+        attr = attr.replace("capital_cost", "fixed")
+        cost_index = (
+            df.set_index(["build_year", "carrier"])
+            .rename(relabel_pypsa_to_techbase, level=1)
+            .index
+        )
+        filler.index = cost_index
+        return costs.reindex(cost_index)[attr].fillna(filler)
 
     def get_first_attr(df, attr):
         map_dict = (
@@ -380,32 +409,26 @@ def update_costs(n, costs, years):
         if df.empty or (c.name in (["Line", "StorageUnit", "Load"])):
             continue
 
-        # update costs and efficiencies
-        attrs = [
-            "capital_cost",
-            "marginal_cost",
-            "efficiency",
-            "efficiency2",
-            "efficiency3",
-            "efficiency4",
-        ]
-        for attr in attrs:
+        # update lifetime + investment costs
+        for attr in ["capital_cost", "lifetime"]:
             if attr not in c.df.columns:
                 continue
-            c.df[attr] = get_first_attr(c.df, attr)
+            df[attr] = get_new_attr(df, attr, costs).values
 
-        # update lifetime according to tech data base
-        c.df["lifetime"] = (
-            c.df.carrier.replace(pypsa_to_techbase)
-            .map(costs[years[0]]["lifetime"])
-            .fillna(c.df.lifetime)
-        )
-
-    # electrolysis costs overwrite - TODO check why different
-    h2_elec_i = n.links[n.links.carrier == "H2 Electrolysis"].index
-    n.links.loc[h2_elec_i, "capital_cost"] = costs[years[0]].loc[
-        "electrolysis", "fixed"
-    ]
+        if not update:
+            # update costs and efficiencies
+            attrs = [
+                "capital_cost",
+                "marginal_cost",
+                "efficiency",
+                "efficiency2",
+                "efficiency3",
+                "efficiency4",
+            ]
+            for attr in attrs:
+                if attr not in c.df.columns:
+                    continue
+                c.df[attr] = get_first_attr(c.df, attr)
 
     # update offshore wind costs with connection costs
     update_offwind_costs(n, costs, years)
@@ -438,12 +461,8 @@ def update_offwind_costs(n, costs, years):
         tech = "offwind-" + connection
         profile = snakemake.input["profile_offwind_" + connection]
         # costs for different investment periods
-        cost_submarine = pd.concat(costs).xs(tech + "-connection-submarine", level=1)[
-            "fixed"
-        ]
-        cost_underground = pd.concat(costs).xs(
-            tech + "-connection-underground", level=1
-        )["fixed"]
+        cost_submarine = costs.xs(tech + "-connection-submarine", level=1)["fixed"]
+        cost_underground = costs.xs(tech + "-connection-underground", level=1)["fixed"]
 
         with xr.open_dataset(profile) as ds:
             underwater_fraction = ds["underwater_fraction"].to_pandas()
@@ -467,10 +486,10 @@ def update_offwind_costs(n, costs, years):
             # e.g. clusters == 37m means that VRE generators are left
             # at clustering of simplified network, but that they are
             # connected to 37-node network
-            if snakemake.wildcards.clusters[-1:] == "m":
-                genmap = busmap_s
-            else:
-                genmap = clustermaps
+            # if snakemake.wildcards.clusters[-1:] == "m":
+            #     genmap = busmap_s
+            # else:
+            genmap = clustermaps
 
             connection_cost = (
                 connection_cost.mul(weight, axis=0)
@@ -480,7 +499,7 @@ def update_offwind_costs(n, costs, years):
             )
             # add station costs where no learning is assumed
             no_learn_cost = connection_cost.add(
-                pd.concat(costs).xs("offwind-ac-station", level=1)["fixed"]
+                costs.xs("offwind-ac-station", level=1)["fixed"]
             )
 
             gen_b = n.generators.carrier == tech
@@ -489,7 +508,7 @@ def update_offwind_costs(n, costs, years):
                 no_learn_cost.stack().reindex(gen_i).values
             )
             # costs with technology learning
-            learn_costs = pd.concat(costs).xs("offwind", level=1)["fixed"]
+            learn_costs = costs.xs("offwind", level=1)["fixed"]
             learn_costs_gen = n.generators[gen_b].build_year.map(learn_costs)
 
             capital_cost = learn_costs_gen + n.generators.loc[gen_b, "nolearning_cost"]
@@ -752,7 +771,7 @@ if __name__ == "__main__":
     discount_rate = snakemake.config["costs"]["discountrate"]
     lifetime = snakemake.config["costs"]["lifetime"]
     costs = prepare_costs_all_years(years, update, cost_folder, discount_rate, lifetime)
-    update_costs(n, costs, years)
+    update_costs(n, costs, years, update)
 
     # adjust already installed capacities to latest IRENA report -----------
     update_capacities(n)
