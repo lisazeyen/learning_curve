@@ -599,13 +599,13 @@ def set_scenario_opts(n, opts):
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
-                    n.carriers.loc["DAC", "max_capacity"] = 150e3 / factor
+                    n.carriers.loc["DAC", "max_capacity"] = 200e3 / factor
                 if tech == "solar":
                     n.carriers.loc["solar", "max_capacity"] = 5e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 4.5e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 7e6 / factor
                 if tech == "offwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["offwind", "max_capacity"] = 3e6 / factor
         if "fcev" in o:
             fcev_fraction = float(o.replace("fcev", "")) / 100
             n = adjust_land_transport_share(n, fcev_fraction)
@@ -1189,7 +1189,7 @@ def seqlopf(
                 .fillna(slope[carrier].iloc[-1])
             )
         if time_delay:
-            cost = cost.shift().fillna(slope.loc[0])
+            cost = cost.shift().fillna(c0)
 
         # (b) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
@@ -1201,11 +1201,15 @@ def seqlopf(
             ),
             axis=1,
         )
-
-        return pd.Series(
+        new_costs = pd.Series(
             n.df(c).set_index(["carrier", "build_year"]).index.map(cost.T.stack()),
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
+        # for offshore wind costs without learning
+        if c == "Generator":
+            new_costs += n.generators.nolearning_cost.fillna(0)
+
+        return new_costs
 
     def update_cost_params(n, prev, time_delay):
         """Update cost parameters according to installed capacities."""
@@ -1314,7 +1318,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-local-seqcost",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0-seqcost",
             clusters="37",
         )
 
@@ -1370,7 +1374,9 @@ if __name__ == "__main__":
     logging.basicConfig(
         filename=snakemake.log.python, level=snakemake.config["logging"]["level"]
     )
-
+    # for solving the solution variables
+    sols = pd.DataFrame()
+    #%%
     with memory_logger(
         filename=getattr(snakemake.log, "memory", None), interval=30.0
     ) as mem:
@@ -1445,6 +1451,18 @@ if __name__ == "__main__":
                 # warmstart=True,
                 # store_basis=True,
             )
+            # for debugging
+            for key in n.sols["Carrier"]["pnl"].keys():
+                sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first())
+                if not isinstance(sol_attr.columns, pd.MultiIndex):
+                    segments_i = pd.Index(np.arange(snakemake.config["segments"]))
+                    sol_attr = sol_attr.reindex(
+                        pd.MultiIndex.from_product([sol_attr.columns, segments_i]),
+                        level=0,
+                        axis=1,
+                    )
+                sol_attr = pd.concat([sol_attr], keys=[key], axis=1)
+                sols = pd.concat([sols, sol_attr], axis=1)
         # solve linear sequential problem with cost update for technology learning
         else:
             seqlopf(
@@ -1459,5 +1477,7 @@ if __name__ == "__main__":
             n.buses_t.v_ang = n.buses_t.v_ang.astype(float)
 
         n.export_to_netcdf(snakemake.output.network)
+
+        sols.to_csv(snakemake.output.sols)
 
     logger.info("Maximum memory usage: {}".format(mem.mem_usage))

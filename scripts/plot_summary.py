@@ -50,6 +50,7 @@ pypsa_to_database = {
     "offwind-dc": "offwind",
     "DAC": "direct air capture",
     "battery charger": "battery inverter",
+    "solar": "solar-utility",
 }
 
 #%%
@@ -789,10 +790,45 @@ def learning_cost_vs_curve():
 
     learn_carrier = learn_carrier.stack().unstack(0).dropna(how="all", axis=1)
 
+    for label, filename in sols_dict.items():
+        print("---------------------------------\n")
+        print(label, filename)
+        try:
+            sols = pd.read_csv(filename, index_col=[0], header=[0, 1, 2])
+        except OSError:
+            print(label, " not solved yet.\n")
+            continue
+
     for scenario in learn_carrier.columns:
+        # sols -----------------------------------------------
+        label = scenario[:-1]
+        filename = sols_dict[label]
+        print("---------------------------------\n")
+        print(label, filename)
+        try:
+            sols = pd.read_csv(filename, index_col=[0], header=[0, 1, 2])
+
+            global_cum_check = (
+                sols["cumulative_capacity"]
+                .groupby(level=0, axis=1)
+                .first()[scenario[-1]]
+            )
+
+            cum_cost = (
+                sols["cumulative_cost"].groupby(level=0, axis=1).first()[scenario[-1]]
+            )
+
+            check = cum_cost.rename(index=global_cum_check.to_dict())
+            check.name = "cumulative cost"
+
+        except OSError:
+            print(label, " not solved yet.\n")
+        # ------------------------------------------------------------
+
         initial_capacity = learn_carrier.loc["global_capacity", scenario]
         global_factor = learn_carrier.loc["global_factor", scenario]
         global_cum = (cum_cap[scenario] / global_factor) + initial_capacity
+
         investment_cost = cost_learning[scenario]
         tot = pd.concat([global_cum, investment_cost], axis=1)
         tot.columns = ["cap", "cost"]
@@ -862,6 +898,8 @@ def learning_cost_vs_curve():
         ax2 = ax.twinx()
         (y_cum / 1e9).plot(ax=ax2, lw=2, color="#1f77b4")
         ax2.set_ylabel("total cumulative cost for new capacity \n [billion Eur]")
+
+        (check / 1e9).plot(ax=ax2, lw=0, color="black", marker="s", markersize=8)
 
         for lr in points.columns.levels[0]:
             lin = (
@@ -1008,6 +1046,19 @@ if __name__ == "__main__":
             sector_opts="Co2L-876h-learnsolarp0-learnonwindp10",
             clusters="37",
         )
+
+    sols_dict = {
+        (str(clusters), str(lv), sector_opt): "results/"
+        + snakemake.config["run"]
+        + "/sols/elec_s_EU_{sector_opts}.csv".format(  # "results/" + snakemake.config['run'] +"/postnetworks/elec_s_{clusters}_lv{lv}_{sector_opts}.nc"\
+            # clusters=clusters,
+            # lv=lv,
+            sector_opts=sector_opt
+        )
+        for clusters in snakemake.config["scenario"]["clusters"]
+        for sector_opt in snakemake.config["scenario"]["sector_opts"]
+        for lv in snakemake.config["scenario"]["lv"]
+    }
 
     n_header = 4
 

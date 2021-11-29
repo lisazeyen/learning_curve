@@ -30,6 +30,10 @@ rule prepare_perfect_foresight:
         costs="data/costs/",
         p_max_pu="data/generators_p_max_pu.csv",
         generators_costs="data/generators_costs.csv",
+        busmap_s="data/busmap_elec_s.csv",
+        busmap="data/busmap_elec_s_37.csv",
+        profile_offwind_ac="data/profile_offwind-ac.nc",
+        profile_offwind_dc="data/profile_offwind-dc.nc",
     output: "results/" + config['run'] + "/prenetworks/elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_brownfield_all_years.nc"
     threads: 2
     resources: mem_mb=10000
@@ -48,6 +52,7 @@ rule set_opts_and_solve:
         costs="data/costs/",
     output:
         network="results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc",
+        sols="results/" + config['run'] + "/sols/elec_s_EU_{sector_opts}.csv",
     shadow: "shallow"
     log:
         solver="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_solver.log",
@@ -106,6 +111,8 @@ rule plot_summary:
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
         cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
         learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
+        sols=expand("results/" + config['run'] +"/sols/elec_s_EU_{sector_opts}.nc",
+                 **config['scenario']),
     output:
         costs1="results"  + '/' + config['run'] + '/graphs/costs.pdf',
         costs2="results"  + '/' + config['run'] + '/graphs/costs2.pdf',
