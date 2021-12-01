@@ -1,4 +1,4 @@
-run: "EU_time_learnoffwind2"
+run: "EU_time_newtimedelay"
 
 logging:
   level: INFO
@@ -28,7 +28,7 @@ seqcost_update: False  # not working for offwind
 # option to retrofit existing methane boilers to H2 boilers
 h2boiler_retrofit: False
 # number of linear segments for MIP
-segments: 4
+segments: 5
 # temporal aggregeation for presolve
 temporal_presolve: None # 73sn
 # add time delay for learning, only capacities of the previous investment

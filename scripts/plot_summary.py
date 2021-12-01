@@ -790,15 +790,6 @@ def learning_cost_vs_curve():
 
     learn_carrier = learn_carrier.stack().unstack(0).dropna(how="all", axis=1)
 
-    for label, filename in sols_dict.items():
-        print("---------------------------------\n")
-        print(label, filename)
-        try:
-            sols = pd.read_csv(filename, index_col=[0], header=[0, 1, 2])
-        except OSError:
-            print(label, " not solved yet.\n")
-            continue
-
     for scenario in learn_carrier.columns:
         # sols -----------------------------------------------
         label = scenario[:-1]
@@ -821,8 +812,10 @@ def learning_cost_vs_curve():
             check = cum_cost.rename(index=global_cum_check.to_dict())
             check.name = "cumulative cost"
 
-        except OSError:
-            print(label, " not solved yet.\n")
+        except (OSError, pd.errors.ParserError):
+            sols = pd.DataFrame()
+            check = pd.DataFrame()
+            print(label, " not solved yet or sequential model.\n")
         # ------------------------------------------------------------
 
         initial_capacity = learn_carrier.loc["global_capacity", scenario]
@@ -899,7 +892,8 @@ def learning_cost_vs_curve():
         (y_cum / 1e9).plot(ax=ax2, lw=2, color="#1f77b4")
         ax2.set_ylabel("total cumulative cost for new capacity \n [billion Eur]")
 
-        (check / 1e9).plot(ax=ax2, lw=0, color="black", marker="s", markersize=8)
+        if not check.empty:
+            (check / 1e9).plot(ax=ax2, lw=0, color="black", marker="s", markersize=8)
 
         for lr in points.columns.levels[0]:
             lin = (

@@ -584,13 +584,14 @@ def set_scenario_opts(n, opts):
                     )
                     # subtract the non-learning part of the offshore wind costs
                     if tech == "offwind":
-                        n.df(c).loc[index, "capital_cost"] = (
+                        n.carriers.loc[tech, "initial_cost"] = (
                             n.df(c).loc[index, "capital_cost"]
                             - n.df(c).loc[index, "nolearning_cost"]
+                        ).mean()
+                    else:
+                        n.carriers.loc[tech, "initial_cost"] = (
+                            n.df(c).loc[index, "capital_cost"].mean()
                         )
-                    n.carriers.loc[tech, "initial_cost"] = (
-                        n.df(c).loc[index, "capital_cost"].mean()
-                    )
                 # TODO
                 if tech == "H2 electrolysis":
                     n.carriers.loc["H2 electrolysis", "max_capacity"] = 2e6 / factor
@@ -1318,7 +1319,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0-seqcost",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0",
             clusters="37",
         )
 
@@ -1362,6 +1363,10 @@ if __name__ == "__main__":
     n.stores.loc[bev_dsm_i, "e_nom_max"] = n.stores.loc[bev_dsm_i, "e_nom"]
     n.stores.loc[bev_dsm_i, "e_nom_extendable"] = True
     n.stores.loc[bev_dsm_i, "carrier"] = "battery"
+
+    # TODO DAC global capacity check
+    if "DAC" in n.carriers.index:
+        n.carriers.loc["DAC", "global_capacity"] = 1e3
 
     # aggregate network temporal
     if snakemake.config["temporal_presolve"] != "None":

@@ -111,13 +111,17 @@ def learning_consistency_check(n):
         (ii) an upper and lower bound for the capacity is defined
         (iii) for learning carriers there are also assets with extendable
         capacity
-        TODO check that capital cost and lifetime of learning carriers for each
-        investment period are the same
     """
     # check if there are any technologies with learning
     learn_i = n.carriers[n.carriers.learning_rate != 0].index
     if learn_i.empty:
         raise ValueError("No carriers with technology learning defined")
+
+    # check if there are nan values
+    if (n.carriers.loc[learn_i].isna()).any(axis=None):
+        raise ValueError(
+            "Learning technologies have nan values, please check " "in n.carriers."
+        )
 
     # check that lower bound is > 0
     x_low = n.carriers.loc[learn_i, "global_capacity"]
@@ -129,7 +133,7 @@ def learning_consistency_check(n):
             "n.carriers.global_capacity for all technologies with learning."
         )
 
-    # check that upper bound is not zero infinity
+    # check that upper bound is not zero or infinity
     x_high = n.carriers.loc[learn_i, "max_capacity"]
     if any(x_high.isin([0, np.inf])) or any(x_high < x_low):
         raise ValueError(
@@ -289,7 +293,7 @@ def get_cumulative_cap_from_cum_cost(cumulative_cost, learning_rate, c0, e0):
     )
 
 
-def piecewise_linear(x, y, segments, carrier):
+def piecewise_linear(x, y, segments, carrier, mini_first=True):
     """Define interpolation points of piecewise-linearised learning curve.
 
     The higher the number of segments, the more precise is the solution. But
@@ -324,17 +328,26 @@ def piecewise_linear(x, y, segments, carrier):
         fit      : pd.DataFrame(columns=pd.MultiIndex([carrier], [x_fit, y_fit]),
                                 index=interpolation points = (line segments + 1))
     """
+
     factor = pd.Series(np.arange(segments), index=np.arange(segments), dtype=float)
     factor = factor.apply(lambda x: 2 ** x)
     # maximum cumulative cost increase
     y_max_increase = y.max() - y.min()
-    initial_len = y_max_increase / factor.max()
-
-    y_fit_data = (
-        [y.min()]
-        + [y.min() + int(initial_len) * 2 ** s for s in range(segments - 1)]
-        + [y.max()]
-    )
+    if mini_first:
+        initial_len = y_max_increase / factor[:-1].max()
+        y_fit_data = (
+            [y.min()]
+            + [y.iloc[1]]
+            + [y.min() + int(initial_len) * 2 ** s for s in range(segments - 2)]
+            + [y.max()]
+        )
+    else:
+        initial_len = y_max_increase / factor.max()
+        y_fit_data = (
+            [y.min()]
+            + [y.min() + int(initial_len) * 2 ** s for s in range(segments - 1)]
+            + [y.max()]
+        )
     y_fit = pd.Series(y_fit_data, index=np.arange(segments + 1))
     index = y_fit.apply(lambda x: np.searchsorted(y, x, side="left"))
     x_fit = x.iloc[index]
@@ -621,19 +634,42 @@ def define_x_position(
         xs_shift = define_variables(
             n, 0, x_high.max(), c, "xs_shift", axes=[investments, multi_i]
         )
+        # define difference called xs_shift_dff ----------------
+        xs_shift_diff = define_variables(
+            n, 0, x_high.max(), c, "xs_shift_diff", axes=[investments, multi_i]
+        )
+
         # define relation xs <-> xs_shift ------------------------------------
+        # no learning first investment period
         exclude_cols = xs_shift.xs(0, level=1, axis=1, drop_level=False).columns
         lhs = linexpr(
             (1, xs_shift.iloc[0][[col not in exclude_cols for col in xs_shift.columns]])
         )
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_delay")
 
+        # xs_shift_diff same for first investment period
+        lhs = linexpr((1, xs_shift.iloc[0]), (-1, xs_shift_diff.iloc[0]))
+        define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_diff_relation")
+
+        # ----------------------------------------------------------
         lhs = (
             linexpr((1, xs_shift), (-1, xs.reindex(xs_shift.columns, axis=1)))
             .groupby(level=0, axis=1)
             .sum(**agg_group_kwargs)
         )
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_xs_relation")
+
+        # xs_diff
+        lhs = (
+            linexpr(
+                (1, xs_shift.iloc[1:]),
+                (-1, xs_shift.shift().iloc[1:]),
+                (-1, xs_shift_diff.iloc[1:]),
+            )
+            .groupby(level=0, axis=1)
+            .sum()
+        )
+        define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_diff_relation")
 
         # define lower and upper bound for xs_shift -------------------------
         learning_shift = learning.shift().dropna().reindex(xs_shift.columns, axis=1)
@@ -654,6 +690,21 @@ def define_x_position(
         )
 
         define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_ub")
+
+        # define lower and upper bound for xs_shift_diff -------------------
+        # lhs = linexpr(
+        #     (1, xs_shift_diff.iloc[1:]),
+        #     (-x_lb.iloc[1:].reindex(xs_shift_diff.columns, axis=1), learning_shift),
+        # )
+
+        # define_constraints(n, lhs, ">=", 0, "Carrier", "xs_shift_diff_lb")
+
+        x_ub = define_bounds(points, "x_fit", "upper", investments, segments).reindex(
+            columns=xs.columns
+        )
+        lhs = linexpr((1, xs_shift_diff.iloc[1:]), (-x_high.max(), learning_shift),)
+
+        define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_diff_ub")
 
     lhs = linexpr((1, xs), (-x_lb, learning))
 
@@ -797,7 +848,9 @@ def define_capacity_per_period(
     define_constraints(n, lhs, "=", 0, "Carrier", "cap_per_asset")
 
 
-def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay=False):
+def define_cumulative_cost(
+    n, points, investments, segments, learn_i, time_delay=False, fix_to_initial=False
+):
     """Define global cumulative cost.
 
     Define variable and constraints for cumulative cost
@@ -831,6 +884,13 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
     # ---- define cumulative costs constraints -----------------------------
     # get slope of line segments = cost per unit (EUR/MW) at line segment
     slope = get_slope(points)
+    check = pd.concat(
+        [n.carriers.loc[slope.columns, "initial_cost"], slope.loc[0]], axis=1
+    ).rename(columns={0: "slope"})
+    logger.info("----------------------------------------------\n {} \n".format(check))
+    # test TODO
+    if fix_to_initial:
+        slope.loc[0] = n.carriers.loc[slope.columns, "initial_cost"]
     slope_t = expand_series(slope.stack(), investments).swaplevel().T.sort_index(axis=1)
     y_intercept = get_interception(points, slope)
     y_intercept_t = (
@@ -845,30 +905,38 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
     y_intercept_t = y_intercept_t.reindex(learning.columns, axis=1)
     slope_t = slope_t.reindex(xs.columns, axis=1)
 
-    # according to Barrettro p.65 eq. (14) ---
+    # cumulative_cost = xs(_shift) * slope + y_intercept * learning(_shift)
     if time_delay:
-        xs_shift = get_var(n, c, "xs_shift")
-        learning_shift = learning.shift().dropna().reindex(xs_shift.columns, axis=1)
+        xs_shift_diff = get_var(n, c, "xs_shift_diff")
+        learning_shift = (
+            learning.shift().dropna().reindex(xs_shift_diff.columns, axis=1)
+        )
         lhs = (
-            linexpr((slope_t.reindex(xs_shift.columns, axis=1), xs_shift))
+            linexpr((slope_t.reindex(xs_shift_diff.columns, axis=1), xs_shift_diff))
             .groupby(level=0, axis=1)
             .sum(**agg_group_kwargs)
+            .cumsum()
             .reindex(learn_i, axis=1)
         )
-        lhs.iloc[1:] += (
-            linexpr(
-                (
-                    y_intercept_t.iloc[1:].reindex(xs_shift.columns, axis=1),
-                    learning_shift,
-                )
-            )
-            .groupby(level=0, axis=1)
-            .sum(**agg_group_kwargs)
-            .reindex(learn_i, axis=1)
-        )
+        # lhs.iloc[1:] += (
+        #     linexpr(
+        #         (
+        #             y_intercept_t.iloc[1:].reindex(xs_shift_diff.columns, axis=1),
+        #             learning_shift,
+        #         )
+        #     )
+        #     .groupby(level=0, axis=1)
+        #     .sum(**agg_group_kwargs)
+        #     .cumsum()
+        #     .reindex(learn_i, axis=1)
+        # )
         rhs = pd.DataFrame(0, index=investments, columns=lhs.columns)
         rhs.iloc[0, :] = -y_intercept.reindex(learn_i, axis=1).loc[0]
+        rhs = expand_series(-y_intercept.loc[0], investments).T.reindex(
+            lhs.columns, axis=1
+        )
 
+    # according to Barrettro p.65 eq. (14) ---
     else:
 
         lhs = (
@@ -1147,4 +1215,5 @@ def add_learning(n, snapshots, segments=5, time_delay=False):
     # define relation cost - cumulative installed capacity
     define_position_on_learning_curve(n, snapshots, segments, time_delay)
     # define objective function with technology learning
+    define_learning_objective(n, snapshots)
     define_learning_objective(n, snapshots)

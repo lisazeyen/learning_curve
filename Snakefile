@@ -111,7 +111,7 @@ rule plot_summary:
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
         cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
         learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
-        sols=expand("results/" + config['run'] +"/sols/elec_s_EU_{sector_opts}.nc",
+        sols=expand("results/" + config['run'] +"/sols/elec_s_EU_{sector_opts}.csv",
                  **config['scenario']),
     output:
         costs1="results"  + '/' + config['run'] + '/graphs/costs.pdf',
