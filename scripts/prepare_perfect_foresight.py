@@ -365,12 +365,6 @@ def prepare_costs_all_years(
 def update_costs(n, costs_dict, years, update):
     """Update all costs according to costs in the first investment period."""
 
-    logger.info(
-        "\n***********************************************************\n"
-        "Update capital cost. If no cost update keep efficiencies and marginal"
-        "cost on first investment period assumptions. \n"
-        "***********************************************************\n"
-    )
 
     costs = pd.concat(costs_dict)
 
@@ -409,13 +403,20 @@ def update_costs(n, costs_dict, years, update):
         if df.empty or (c.name in (["Line", "StorageUnit", "Load"])):
             continue
 
-        # update lifetime + investment costs
-        for attr in ["capital_cost", "lifetime"]:
-            if attr not in c.df.columns:
-                continue
-            df[attr] = get_new_attr(df, attr, costs).values
+        # TODO very error prune!! rather rerun pypsa-eur-sec
+        # # update lifetime + investment costs
+        # for attr in ["capital_cost", "lifetime"]:
+        #     if attr not in c.df.columns:
+        #         continue
+        #     df[attr] = get_new_attr(df, attr, costs).values
 
         if not update:
+            logger.info(
+                "\n***********************************************************\n"
+                "Set capital-,marginal cost and efficiencies"
+                "on first investment period assumptions. \n"
+                "***********************************************************\n"
+            )
             # update costs and efficiencies
             attrs = [
                 "capital_cost",
@@ -441,7 +442,7 @@ def update_offwind_costs(n, costs, years):
     """
     logger.info(
         "\n***********************************************************\n"
-        "Update capital cost and connection costs of offshore wind farms.\n"
+        "Add non-learning investment costs of offshore wind farms.\n"
         "***********************************************************\n"
     )
     # assign clustered bus
@@ -502,7 +503,7 @@ def update_offwind_costs(n, costs, years):
                 costs.xs("offwind-ac-station", level=1)["fixed"]
             )
 
-            gen_b = n.generators.carrier == tech
+            gen_b = (n.generators.carrier == tech) & (n.generators.p_nom_extendable)
             gen_i = n.generators[gen_b].set_index(["bus", "build_year"]).index
             n.generators.loc[gen_b, "nolearning_cost"] = (
                 no_learn_cost.stack().reindex(gen_i).values
