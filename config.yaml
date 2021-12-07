@@ -1,4 +1,4 @@
-run: "EU_time_newtimedelay"
+run: "new_SMR_assumptions2"
 
 logging:
   level: INFO
