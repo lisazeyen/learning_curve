@@ -522,7 +522,7 @@ def historical_emissions(cts):
         cts.remove("GB")
         cts.append("UK")
 
-    year = np.arange(1990, 2018).tolist()
+    year = np.arange(1990, 2020).tolist()
 
     idx = pd.IndexSlice
     co2_totals = (
@@ -626,18 +626,18 @@ def plot_carbon_budget_distribution():
     # plot commited and uder-discussion targets
     # (notice that historical emissions include all countries in the
     # network, but targets refer to EU)
-    ax1.plot(
-        [2020],
-        [0.8 * emissions[1990]],
-        marker="*",
-        markersize=12,
-        markerfacecolor="black",
-        markeredgecolor="black",
-    )
+    # ax1.plot(
+    #     [2020],
+    #     [0.8 * emissions[1990]],
+    #     marker="*",
+    #     markersize=12,
+    #     markerfacecolor="black",
+    #     markeredgecolor="black",
+    # )
 
     ax1.plot(
         [2030],
-        [0.45 * emissions[1990]],
+        [0.55 * emissions[1990]],
         marker="*",
         markersize=12,
         markerfacecolor="white",
@@ -653,31 +653,31 @@ def plot_carbon_budget_distribution():
         markeredgecolor="black",
     )
 
-    ax1.plot(
-        [2050, 2050],
-        [x * emissions[1990] for x in [0.2, 0.05]],
-        color="gray",
-        linewidth=2,
-        marker="_",
-        alpha=0.5,
-    )
+    # ax1.plot(
+    #     [2050, 2050],
+    #     [x * emissions[1990] for x in [0.2, 0.05]],
+    #     color="gray",
+    #     linewidth=2,
+    #     marker="_",
+    #     alpha=0.5,
+    # )
+
+    # ax1.plot(
+    #     [2050],
+    #     [0.01 * emissions[1990]],
+    #     marker="*",
+    #     markersize=12,
+    #     markerfacecolor="white",
+    #     linewidth=0,
+    #     markeredgecolor="black",
+    #     label="EU under-discussion target",
+    #     zorder=10,
+    #     clip_on=False,
+    # )
 
     ax1.plot(
         [2050],
-        [0.01 * emissions[1990]],
-        marker="*",
-        markersize=12,
-        markerfacecolor="white",
-        linewidth=0,
-        markeredgecolor="black",
-        label="EU under-discussion target",
-        zorder=10,
-        clip_on=False,
-    )
-
-    ax1.plot(
-        [2050],
-        [0.125 * emissions[1990]],
+        [0.0 * emissions[1990]],
         "ro",
         marker="*",
         markersize=12,
@@ -1031,8 +1031,8 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
