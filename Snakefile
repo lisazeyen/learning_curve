@@ -104,7 +104,7 @@ rule plot_summary:
         costs="data/costs/",
         # energy="results"  + '/' + config['run'] + '/csvs/energy.csv',
         balances="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
-        eea ="data/eea/UNFCCC_v23.csv",
+        eea ="data/eea/UNFCCC_v24.csv",
         countries="results"  + '/' + config['run'] + '/csvs/nodal_capacities.csv',
         co2_emissions="results"  + '/' + config['run'] + '/csvs/co2_emissions.csv',
         capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
