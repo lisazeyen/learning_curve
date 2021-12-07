@@ -1319,7 +1319,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0",
             clusters="37",
         )
 
@@ -1330,6 +1330,10 @@ if __name__ == "__main__":
     n = pypsa.Network(
         snakemake.input.network, override_component_attrs=override_component_attrs
     )
+
+    # fix for current pypsa-eur-sec version
+    co2_i = n.stores[n.stores.carrier=="co2 stored"].index
+    n.stores.loc[co2_i, "e_nom_max"] = 200e6
 
     # cluster network spatially to one node
     if snakemake.config["one_node"]:
