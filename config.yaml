@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDAC, Co2L-148sn-learnH2xElectrolysisp0-learnDAC-seqcost-limitgrowth]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-seqcost-limitgrowth]
   investment_periods: [2020, 2025, 2030, 2035, 2040, 2045, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']

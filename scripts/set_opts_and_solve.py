@@ -1268,7 +1268,7 @@ def seqlopf(
         ).fillna(n.df(c).capital_cost)
         # for offshore wind costs without learning
         if c == "Generator":
-            new_costs += n.generators.nolearning_cost.fillna(0)
+            new_costs.loc[assets.index] += n.generators.loc[assets.index, "nolearning_cost"].fillna(0)
 
         return new_costs
 
@@ -1379,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth",
             clusters="37",
         )
 
@@ -1517,7 +1517,7 @@ if __name__ == "__main__":
                 # store_basis=True,
             )
             # for debugging
-            if hasattr(n.sols, "Carrier"):
+            if hasattr(n, "obj") and hasattr(n.sols, "Carrier"):
                 try:
                     for key in n.sols["Carrier"]["pnl"].keys():
                         sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first())
