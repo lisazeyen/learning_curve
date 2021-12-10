@@ -562,7 +562,8 @@ def set_scenario_opts(n, opts):
                     ext_i = get_extendable_i(n, c)
                     if "carrier" not in n.df(c) or n.df(c).empty:
                         continue
-                    if tech == "offwind" and c == "Generator":
+
+                    if tech=="offwind":
                         rename_offwind = {
                             "offwind-dc": "offwind",
                             "offwind-ac": "offwind",
@@ -583,10 +584,10 @@ def set_scenario_opts(n, opts):
                         .index
                     )
                     # subtract the non-learning part of the offshore wind costs
-                    if tech == "offwind":
+                    if "nolearning_cost" in n.df(c).columns:
                         n.carriers.loc[tech, "initial_cost"] = (
                             n.df(c).loc[index, "capital_cost"]
-                            - n.df(c).loc[index, "nolearning_cost"]
+                            - n.df(c).loc[index, "nolearning_cost"].fillna(0)
                         ).mean()
                     else:
                         n.carriers.loc[tech, "initial_cost"] = (
@@ -607,6 +608,11 @@ def set_scenario_opts(n, opts):
                     n.carriers.loc["onwind", "max_capacity"] = 7e6 / factor
                 if tech == "offwind":
                     n.carriers.loc["offwind", "max_capacity"] = 3e6 / factor
+                if tech == "battery":
+                    bev_dsm_i = n.stores[n.stores.carrier == "battery storage"].index
+                    n.stores.loc[bev_dsm_i, "e_nom_max"] = n.stores.loc[bev_dsm_i, "e_nom"]
+                    n.stores.loc[bev_dsm_i, "e_nom_extendable"] = True
+                    n.stores.loc[bev_dsm_i, "carrier"] = "battery"
         if "fcev" in o:
             fcev_fraction = float(o.replace("fcev", "")) / 100
             n = adjust_land_transport_share(n, fcev_fraction)
@@ -619,6 +625,35 @@ def set_scenario_opts(n, opts):
                     n.stores.loc["co2 stored-{}".format(years[0]), "e_nom_max"]
                 )
             )
+
+        if "SMRc" in o:
+            smr_i = n.links[n.links.carrier=="SMR CC"].index
+            capital_cost0 = n.links.loc[smr_i, "capital_cost"].groupby(n.links.build_year).mean().loc[years[0]]
+            factor = float(
+                o[len("SMRc"):].replace("p", ".").replace("m", "-")
+            )
+            new_costs = pd.Series(np.interp(x=years, xp=[years[0],years[-1]],
+                                            fp=[capital_cost0, factor * capital_cost0]),
+                                  index=years)
+            logger.info("updating SMR CC costs to \n "
+                        "{}\n"
+                        "------------------------------------------------\n".format(new_costs))
+            n.links.loc[smr_i, "capital_cost"] = n.links.loc[smr_i, "build_year"].map(new_costs)
+
+        if "H2Elc" in o:
+            smr_i = n.links[n.links.carrier=="H2 Electrolysis"].index
+            capital_cost0 = n.links.loc[smr_i, "capital_cost"].groupby(n.links.build_year).mean().loc[years[0]]
+            factor = float(
+                o[len("H2Elc"):].replace("p", ".").replace("m", "-")
+            )
+            new_costs = pd.Series(np.interp(x=years, xp=[years[0],years[-1]],
+                                            fp=[capital_cost0, factor * capital_cost0]),
+                                  index=years)
+            logger.info("updating SH2 Electrolysis costs to \n "
+                        "{}\n"
+                        "------------------------------------------------\n".format(new_costs))
+            n.links.loc[smr_i, "capital_cost"] = n.links.loc[smr_i, "build_year"].map(new_costs)
+
     if "local" in opts:
         learn_i = n.carriers[n.carriers.learning_rate != 0].index
         n.carriers.loc[learn_i, "global_factor"] = 1.0
@@ -730,9 +765,10 @@ def set_carbon_constraints(n):
     n.add(
         "GlobalConstraint",
         "Budget",
-        type="Budget",
+        type="Co2Budget",
         carrier_attribute="co2_emissions",
         sense="<=",
+        investment_period=n.snapshots.levels[0][-1],
         constant=budget,
     )
 
@@ -874,6 +910,28 @@ def add_carbon_neutral_constraint(n, snapshots):
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
 
+def add_carbon_budget_constraint(n, snapshots):
+    glcs = n.global_constraints.query('type == "Co2Budget"')
+    if glcs.empty:
+        return
+    for name, glc in glcs.iterrows():
+        rhs = glc.constant
+        carattr = glc.carrier_attribute
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
+        if emissions.empty:
+            continue
+
+        # stores
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
+        if not stores.empty:
+            time_valid = int(glc.loc["investment_period"])
+            final_e = get_var(n, "Store", "e").groupby(level=0).last()[stores.index]
+
+            lhs = linexpr((1, final_e.loc[time_valid]))
+            con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
+
 def add_local_res_constraint(n, snapshots):
     c, attr = "Generator", "p_nom"
     res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
@@ -991,6 +1049,7 @@ def prepare_network(n, solve_opts=None):
                 time_delay=snakemake.config["time_delay"],
             )
             add_carbon_neutral_constraint(n, snapshots)
+            add_carbon_budget_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
                 add_retrofit_gas_boilers_constraint(n, snapshots)
@@ -1003,6 +1062,7 @@ def prepare_network(n, solve_opts=None):
         def extra_functionality(n, snapshots):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
+            add_carbon_budget_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
                 add_retrofit_gas_boilers_constraint(n, snapshots)
@@ -1319,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0",
+            sector_opts="Co2L-148sn",
             clusters="37",
         )
 
@@ -1362,11 +1422,6 @@ if __name__ == "__main__":
     # extend lifetime of nuclear power plants to 60 years
     nuclear_i = n.links[n.links.carrier == "nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.0
-    # TODO
-    bev_dsm_i = n.stores[n.stores.carrier == "battery storage"].index
-    n.stores.loc[bev_dsm_i, "e_nom_max"] = n.stores.loc[bev_dsm_i, "e_nom"]
-    n.stores.loc[bev_dsm_i, "e_nom_extendable"] = True
-    n.stores.loc[bev_dsm_i, "carrier"] = "battery"
 
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
@@ -1378,7 +1433,8 @@ if __name__ == "__main__":
     n = set_temporal_aggregation(n, opts)
 
     # time delay learning
-    time_delay = snakemake.config["time_delay"] or "timedelay" in opts
+    time_delay = snakemake.config["time_delay"] and "notimedelay" not in opts
+    logger.info("\n ------------\n Time delay is set to : {}\n ------------\n".format(time_delay))
     # solve network
     logging.basicConfig(
         filename=snakemake.log.python, level=snakemake.config["logging"]["level"]
@@ -1461,17 +1517,21 @@ if __name__ == "__main__":
                 # store_basis=True,
             )
             # for debugging
-            for key in n.sols["Carrier"]["pnl"].keys():
-                sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first())
-                if not isinstance(sol_attr.columns, pd.MultiIndex):
-                    segments_i = pd.Index(np.arange(snakemake.config["segments"]))
-                    sol_attr = sol_attr.reindex(
-                        pd.MultiIndex.from_product([sol_attr.columns, segments_i]),
-                        level=0,
-                        axis=1,
-                    )
-                sol_attr = pd.concat([sol_attr], keys=[key], axis=1)
-                sols = pd.concat([sols, sol_attr], axis=1)
+            if hasattr(n.sols, "Carrier"):
+                try:
+                    for key in n.sols["Carrier"]["pnl"].keys():
+                        sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first())
+                        if not isinstance(sol_attr.columns, pd.MultiIndex):
+                            segments_i = pd.Index(np.arange(snakemake.config["segments"]))
+                            sol_attr = sol_attr.reindex(
+                                pd.MultiIndex.from_product([sol_attr.columns, segments_i]),
+                                level=0,
+                                axis=1,
+                            )
+                        sol_attr = pd.concat([sol_attr], keys=[key], axis=1)
+                        sols = pd.concat([sols, sol_attr], axis=1)
+                except AttributeError:
+                    logger.info("no sols saved")
         # solve linear sequential problem with cost update for technology learning
         else:
             seqlopf(

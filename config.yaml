@@ -1,4 +1,4 @@
-run: "new_SMR_assumptions2"
+run: "more_investment_years"
 
 logging:
   level: INFO
@@ -7,8 +7,8 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-local, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-local-seqcost, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-local-seqcost-limitgrowth]
-  investment_periods: [2020, 2030, 2040, 2050]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDAC, Co2L-148sn-learnH2xElectrolysisp0-learnDAC-seqcost-limitgrowth]
+  investment_periods: [2020, 2025, 2030, 2035, 2040, 2045, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
@@ -77,6 +77,7 @@ co2_budget:
   2p0 : 70 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
 
 sector:
+  electricity_grid_connection: True
   # TRANSPORT ------------------------------------------------------------
   'bev_dsm' : True #turns on EV battery
   'bev_availability' : 0.5  #How many cars do smart charging

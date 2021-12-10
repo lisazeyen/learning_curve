@@ -1170,34 +1170,20 @@ def define_learning_objective(n, sns):
         terms = linexpr((weighting, cost_learning[weighting.columns]))
         write_objective(n, terms)
 
-    # (iii) costs without learning from offshore wind
-    if "offwind" in learn_i:
-        logger.info("\n Add connection cost for offshore without learning")
-        c="Generator"
-        attr = "p_nom"
-        ext_i = get_extendable_i(n, c)
-        offwind_assets = ext_i.intersection(
-            n.df(c)[n.df(c)["carrier"] == "offwind"].index
-        )
+        # (iii) costs without learning
+        if "nolearning_cost" in n.df(c).columns:
+            logger.info("Non learning costs for component {} are added to objective.".format(c))
 
-        cost = n.df(c).loc[offwind_assets, "nolearning_cost"]
+            nolearn_cost = n.df(c).loc[learn_assets, "nolearning_cost"].fillna(0)
+            caps = expand_series(
+                get_var(n, c, attr).loc[learn_assets], investments
+            ).loc[learn_assets]
+            cost_weighted = (
+                active.loc[learn_assets].mul(nolearn_cost, axis=0).mul(objective_w_investment)
+            )
+            terms = linexpr((cost_weighted, caps))
+            write_objective(n, terms)
 
-        active = pd.concat(
-            [
-                get_active_assets(n, c, inv_p, sns).rename(inv_p)
-                for inv_p in investments
-            ],
-            axis=1,
-        ).astype(int)
-
-        caps = expand_series(
-            get_var(n, c, attr).loc[offwind_assets], investments
-        ).loc[offwind_assets]
-        cost_weighted = (
-            active.loc[offwind_assets].mul(cost, axis=0).mul(objective_w_investment)
-        )
-        terms = linexpr((cost_weighted, caps))
-        write_objective(n, terms)
 
 
 def add_learning(n, snapshots, segments=5, time_delay=False):

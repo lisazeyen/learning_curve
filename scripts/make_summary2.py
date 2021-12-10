@@ -373,6 +373,32 @@ def calculate_costs(n, label, costs):
     return costs
 
 
+def calculate_capital_cost(n, label, capital_cost):
+    """Calculate costs without the non-learning costs."""
+    investments = n.snapshots.levels[0]
+    cols = pd.MultiIndex.from_product(
+        [
+            capital_cost.columns.levels[0],
+            capital_cost.columns.levels[1],
+            capital_cost.columns.levels[2],
+            investments,
+        ],
+        names=capital_cost.columns.names[:3] + ["year"],
+    )
+    capital_cost = capital_cost.reindex(cols, axis=1)
+
+    for c in n.iterate_components(
+        n.branch_components | n.controllable_one_port_components ^ {"Load"}
+    ):
+        cap = c.df.capital_cost
+        if "nolearning_cost" in c.df.columns:
+            cap -= c.df.nolearning_cost.fillna(0)
+        cap = cap.groupby([c.df.carrier, c.df.build_year]).mean().unstack()[investments]
+        capital_cost = capital_cost.reindex(capital_cost.index.union(cap.index))
+        capital_cost.loc[cap.index, label] = cap.values
+
+    return capital_cost
+
 def calculate_cumulative_cost():
     planning_horizons = snakemake.config["scenario"]["planning_horizons"]
 
@@ -1043,6 +1069,7 @@ outputs = [
     "capital_costs_learning",
     "cumulative_capacities",
     "learn_carriers",
+    "capital_cost",
 ]
 
 

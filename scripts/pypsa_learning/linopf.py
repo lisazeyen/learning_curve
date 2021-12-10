@@ -1367,9 +1367,9 @@ def assign_solution(
                             axis=1,
                         )
                     )
-                    if comp=="Generator" and "offwind" in learn_i:
-                        logger.info("Add back offwind costs which do not underly learning.\n")
-                        offwind_i = n.df(comp)[n.df(comp).p_nom_extendable & (n.df(comp).carrier=="offwind")].index
+                    if comp=="Generator" and "nolearning_cost" in n.df(comp).columns:
+                        logger.info("Add back connection costs which do not underly learning.\n")
+                        offwind_i = n.df(comp)[n.df(comp).p_nom_extendable & (~n.df(comp).nolearning_cost.isna())].index
                         n.df(comp).loc[offwind_i, "capital_cost"] += n.df(comp).loc[offwind_i, "nolearning_cost"]
         else:
             # case that variables are static

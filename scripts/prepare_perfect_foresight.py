@@ -336,11 +336,9 @@ def prepare_costs(cost_file, discount_rate, lifetime):
         }
     )
 
-    costs["fixed"] = [
-        (annuity(v["lifetime"], v["discount rate"]) + v["FOM"] / 100.0)
-        * v["investment"]
-        for i, v in costs.iterrows()
-    ]
+    annuity_factor = lambda v: annuity(v["lifetime"], v["discount rate"]) + v["FOM"] / 100
+    costs["fixed"] = [annuity_factor(v) * v["investment"] for i, v in costs.iterrows()]
+
     return costs
 
 
@@ -433,6 +431,18 @@ def update_costs(n, costs_dict, years, update):
 
     # update offshore wind costs with connection costs
     update_offwind_costs(n, costs, years)
+
+    # extract electricity grid connection costs for onwind and solar
+    # CAREFUL: inconsistency with brownfield since to electricity connection costs are added
+    if snakemake.config["sector"]['electricity_grid_connection']:
+        logger.info("\n -----------------------\n"
+                    "Electricity grid connection cost for onwind, solar and offwind "
+                    "are considered not to experience any learning."
+                    "\n ----------------------\n")
+        gens_i = n.generators[n.generators.p_nom_extendable &
+                              n.generators.carrier.isin(["onwind", "solar"])].index
+        grid_con_cost = costs.xs('electricity grid connection', level=1)["fixed"]
+        n.generators.loc[gens_i, "nolearning_cost"] = n.generators.loc[gens_i, "build_year"].map(grid_con_cost)
 
 
 def update_offwind_costs(n, costs, years):
@@ -643,8 +653,8 @@ def set_multi_index(n, years, social_discountrate):
     # loads_t.rename(columns=lambda x: x.replace("-2020", ""), inplace=True)
     loads_t.index.rename(["investment_period", "snapshot"], inplace=True)
     load_df = n.loads.loc[load_df_i]
-    load_df.rename(index=lambda x: x.replace("-2020", ""), inplace=True)
-    loads_t.rename(columns=lambda x: x.replace("-2020", ""), inplace=True)
+    load_df.rename(index=lambda x: x.replace("-{}".format(years[0]), ""), inplace=True)
+    loads_t.rename(columns=lambda x: x.replace("-{}".format(years[0]), ""), inplace=True)
 
     n.mremove("Load", n.loads.index)
 
@@ -658,9 +668,9 @@ def set_multi_index(n, years, social_discountrate):
         n.investment_period_weightings.index.to_series()
         .diff()
         .shift(-1)
-        .fillna(10)
         .values
     )
+    n.investment_period_weightings.loc[:, "time_weightings"].fillna(method="ffill", inplace=True)
     n.investment_period_weightings.loc[
         :, "objective_weightings"
     ] = get_investment_weighting(
@@ -792,15 +802,21 @@ if __name__ == "__main__":
         n.investment_period_weightings["time_weightings"]
     )
     # n.stores.loc[store_i, ["e_nom", "e_initial"]] = n.stores.loc[store_i, ["e_nom", "e_initial"]].mul(time_weightings, axis=0)
-    n.stores.loc[store_i, "lifetime"] = 10.0
+    n.stores.loc[store_i, "lifetime"] = time_weightings
 
     # adjust lifetime of BEV and V2G
     to_adjust = ["V2G", "BEV charger"]
     to_adjust_i = n.links[n.links.carrier.isin(to_adjust)].index
-    n.links.loc[to_adjust_i, "lifetime"] = 10
-    to_adjust = ["Li ion"]
+    time_weightings = n.links.loc[to_adjust_i, "build_year"].map(
+        n.investment_period_weightings["time_weightings"]
+    )
+    n.links.loc[to_adjust_i, "lifetime"] =  time_weightings
+    to_adjust = ["Li ion", "battery storage"]
     to_adjust_i = n.stores[n.stores.carrier.isin(to_adjust)].index
-    n.stores.loc[to_adjust_i, "lifetime"] = 10
+    time_weightings = n.stores.loc[to_adjust_i, "build_year"].map(
+        n.investment_period_weightings["time_weightings"]
+    )
+    n.stores.loc[to_adjust_i, "lifetime"] =  time_weightings
 
     # add hydrogen boilers
     df = n.links[

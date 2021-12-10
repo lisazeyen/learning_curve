@@ -694,11 +694,20 @@ def plot_carbon_budget_distribution():
 
 
 def plot_capital_costs_learning():
+    # learning assets
     cost_learning = pd.read_csv(
         snakemake.input.capital_costs_learning,
         index_col=0,
         header=list(range(n_header)),
     )
+    learn_i = cost_learning.index
+    # non learning assets
+    capital_cost = pd.read_csv(snakemake.input.capital_cost, index_col=0,
+                               header=list(range(n_header)))
+    offwind = capital_cost.loc[["offwind-ac", "offwind-dc"]].mean()
+    capital_cost.loc["offwind"].fillna(offwind, inplace=True)
+
+
     years = cost_learning.columns.levels[3]
     costs = prepare_costs_all_years(years)
     # convert EUR/MW in EUR/kW
@@ -716,11 +725,12 @@ def plot_capital_costs_learning():
     )
     costs_dea.rename(index=lambda x: "DEA " + x, inplace=True)
 
-    cost_learning = cost_learning.droplevel(level=[0, 1], axis=1) / 1e3
+    cost_learning = capital_cost.droplevel(level=[0,1], axis=1) / 1e3
 
-    for tech in cost_learning.index:
+    for tech in learn_i:
         fig, ax = plt.subplots(len(cost_learning.stack().columns), 1, sharex=True)
         fig.set_size_inches((10, 10))
+        fig.suptitle("{} \n Investment  cost without grid connection costs \n".format(tech), fontsize=16)
         for i, scenario in enumerate(cost_learning.stack().columns):
 
             cost_learning.loc[tech, scenario].T.plot(
@@ -765,6 +775,48 @@ def plot_capital_costs_learning():
     # just for not breaking the snakemake workflow
     fig.savefig(
         snakemake.output.capital_costs_learning, bbox_inches="tight",
+    )
+
+    # investments per period -------------------------------------------------
+    cost = pd.read_csv(
+        snakemake.input.costs_csv, index_col=list(range(3)), header=list(range(4))
+    )
+    cost = cost.groupby(level=2).sum()
+    inv_cost = (cost.droplevel(level=[0,1], axis=1)/1e9)
+    for tech in learn_i:
+        rows = len(cost_learning.stack().columns)
+        y_max = (cost.droplevel(level=[0,1], axis=1)/1e9).loc[tech].groupby(level=0).sum().max()
+        fig, ax = plt.subplots(rows, 1, sharex=True)
+        fig.set_size_inches((10, 10))
+        fig.suptitle("Investment per period and total \n {}".format(tech), fontsize=16)
+        for i, scenario in enumerate(cost_learning.stack().columns):
+            inv_tech = inv_cost.loc[tech, scenario].T
+            inv_tech.loc["total"] = inv_tech.sum()
+            inv_tech.plot(
+                kind="bar",
+                ax=ax[i],
+                title=str(scenario),
+                legend=False,
+                color=[snakemake.config["plotting"]["tech_colors"][tech]],
+            )
+            ax[i].grid(axis="y")
+            ax[i].set_ylim([0, y_max * 1.1])
+        ax[(rows//2)].set_ylabel("Overall investment \n [billion Euros]")
+
+        handles, labels = ax[0].get_legend_handles_labels()
+
+        handles.reverse()
+        labels.reverse()
+
+        ax[0].legend(handles, labels, ncol=1, bbox_to_anchor=(1, 1))
+
+        fig.savefig(
+            snakemake.output.annual_investments[:-4] + tech + ".pdf",
+            bbox_inches="tight",
+        )
+    # just for not breaking the snakemake workflow
+    fig.savefig(
+        snakemake.output.annual_investments, bbox_inches="tight",
     )
 
 
@@ -1031,8 +1083,8 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(

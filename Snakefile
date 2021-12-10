@@ -82,6 +82,7 @@ rule make_summary_sec:
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
         curtailment="results"  + '/' + config['run'] + '/csvs/curtailment.csv',
         capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
+        capital_cost="results"  + '/' + config['run'] + '/csvs/capital_cost.csv',
         #energy="results"  + '/' + config['run'] + '/csvs/energy.csv',
         #supply="results"  + '/' + config['run'] + '/csvs/supply.csv',
         supply_energy="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
@@ -111,6 +112,7 @@ rule plot_summary:
         capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
         cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
         learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
+        capital_cost="results"  + '/' + config['run'] + '/csvs/capital_cost.csv',
         sols=expand("results/" + config['run'] +"/sols/elec_s_EU_{sector_opts}.csv",
                  **config['scenario']),
     output:
@@ -122,6 +124,7 @@ rule plot_summary:
         co2_emissions="results"  + '/' + config['run'] + '/graphs/carbon_budget_plot.pdf',
         capacities="results"  + '/' + config['run'] + '/graphs/capacities.pdf',
         capital_costs_learning="results"  + '/' + config['run'] + '/graphs/capital_costs_learning.pdf',
+        annual_investments="results"  + '/' + config['run'] + '/graphs/annual_investments.pdf',
         learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
     threads: 2
     resources: mem_mb=10000
