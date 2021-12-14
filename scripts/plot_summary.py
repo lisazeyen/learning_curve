@@ -1083,8 +1083,8 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(

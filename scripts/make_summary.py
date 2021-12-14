@@ -151,21 +151,28 @@ def plot_map(n, ax=None, opts={}):
               color="pink")
 
     # generator caps
-    generator_caps = get_cap_per_investment_period(n, "Generator")
-    storage_caps = get_cap_per_investment_period(n, "StorageUnit")
-    store_caps = get_cap_per_investment_period(n, "Store")
-    line_caps = get_cap_per_investment_period(n, "Line")
-    link_caps = get_cap_per_investment_period(n, "Link")
+    investments = n.snapshots.levels[0]
+    assign_location(n)
+    caps = {}
+    for c in ["Generator", "Link", "Store", "Line"]:
+        active = pd.concat(
+            [
+                get_active_assets(n, c, inv_p, n.snapshots).rename(inv_p)
+                for inv_p in investments
+            ],
+            axis=1,
+        ).astype(int)
+        caps[c] = ((active.mul(n.df(c)[opt_name.get(c, "p") + "_nom_opt"], axis=0))
+                   .groupby([n.df(c).carrier, n.df(c).country]).sum(**agg_group_kwargs))
 
 
-    for year in generator_caps.index:
+
+    for year in investments:
         # bus_sizes = n.generators_t.p.sum().loc[n.generators.carrier == "load"].groupby(n.generators.bus).sum()
-        bus_sizes = pd.concat((generator_caps.loc[year][n.generators.carrier!="load"].groupby([n.generators.bus, n.generators.carrier]).sum(**agg_group_kwargs),
-                               storage_caps.loc[year][n.storage_units.carrier!="load"].groupby([n.storage_units.bus, n.storage_units.carrier]).sum(**agg_group_kwargs),
-                               # store_caps.loc[year][n.stores.carrier!="load"].groupby([n.stores.bus.str[:5], n.stores.carrier]).sum(**agg_group_kwargs),
-                               link_caps.loc[year][n.links.carrier!="DC"].groupby([n.links.bus1.str[:5], n.links.carrier]).sum(**agg_group_kwargs)
-                               ))
-        line_widths_exp = dict(Line=line_caps.loc[year], Link=link_caps.loc[year,n.links[n.links.carrier=="DC"].index])
+        bus_sizes = pd.concat([caps["Generator"][year].drop("load"),
+                               caps["Link"][year]])
+        line_widths_exp = dict(Line=caps["Line"].loc["AC", year],
+                               Link=caps["Link"].loc["DC", year])
         line_widths_cur = dict(Line=n.lines.s_nom_min, Link=n.links.loc[n.links[n.links.carrier=="DC"].index, "p_nom_min"])
 
         bus_sizes.rename(lambda x: x.replace(" discharger", ""), level=1, inplace=True)

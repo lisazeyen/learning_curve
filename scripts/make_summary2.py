@@ -393,7 +393,7 @@ def calculate_capital_cost(n, label, capital_cost):
         cap = c.df.capital_cost
         if "nolearning_cost" in c.df.columns:
             cap -= c.df.nolearning_cost.fillna(0)
-        cap = cap.groupby([c.df.carrier, c.df.build_year]).mean().unstack()[investments]
+        cap = cap.groupby([c.df.carrier, c.df.build_year]).mean().unstack().reindex(columns=investments)
         capital_cost = capital_cost.reindex(capital_cost.index.union(cap.index))
         capital_cost.loc[cap.index, label] = cap.values
 
@@ -1116,8 +1116,8 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         import os
 
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
@@ -1125,8 +1125,8 @@ if __name__ == "__main__":
             sector_opts="Co2L-2p24h-learnsolarp0-learnonwindp10",
             clusters="37",
         )
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-        os.chdir("/home/lisa/Documents/learning_curve/")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        # os.chdir("/home/lisa/Documents/learning_curve/")
 
     networks_dict = {
         (clusters, lv, sector_opt): "results/"

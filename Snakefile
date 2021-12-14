@@ -18,6 +18,10 @@ rule solve_all_sec_networks:
         expand("results/" + config['run'] + "/postnetworks/elec_s_EU_{sector_opts}.nc",
                **config['scenario'])
 
+rule plot_all_networks:
+    input:
+        expand("results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-costs-all.pdf",
+               **config['scenario'])
 
 rule prepare_perfect_foresight:
     input:
@@ -138,3 +142,14 @@ rule copy_config:
     resources: mem_mb=1000
     script:
         'scripts/copy_config.py'
+
+rule plot_network:
+    input:
+        network="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}.nc",
+    output:
+        map="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-costs-all.pdf",
+        supply="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-supply.pdf",
+    threads: 2
+    resources: mem_mb=10000
+    benchmark: "results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}"
+    script: "scripts/plot_network.py"
