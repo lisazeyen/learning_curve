@@ -585,6 +585,83 @@ def define_learning_binary_constraint(n, snapshots):
     define_constraints(n, lhs, "<=", 0, "Carrier", "delta_segment_ub")
 
 
+def define_learning_constraint(n, snapshots):
+    """Define constraints for the learning binaries.
+
+    Constraints for the binary variables:
+        (1) for every tech/carrier and investment period select only one
+        line segment
+        (2) experience grows or stays constant
+    """
+    c, attr = "Carrier", "learning"
+
+    # get carriers with learning
+    learn_i = n.carriers[n.carriers.learning_rate != 0].index
+    if learn_i.empty:
+        return
+
+    # get learning binaries
+    learning = get_var(n, c, attr)
+    # (1) sum over all line segments
+    lhs = (
+        linexpr((1, learning))
+        .groupby(level=0, axis=1)
+        .sum(**agg_group_kwargs)
+        .reindex(columns=learn_i)
+    )
+    # define constraint to always select just on line segment
+    define_constraints(n, lhs, "=", 1, "Carrier", "select_segment")
+
+    # (2) experience must grow constraints (p.67 Barretto, eq 19)
+    # experience tech at t+1 either remains at segment or moves further
+    delta_sum = linexpr((1, learning)).cumsum(axis=1)
+    next_delta_sum = linexpr((-1, learning)).cumsum(axis=1).shift(-1).dropna()
+    # sum_P=1^i (lambda (P, t) - lambda (P, t+1)) >= 0
+    lhs = delta_sum.iloc[:-1] + next_delta_sum
+    define_constraints(n, lhs, ">=", 0, "Carrier", "delta_segment_lb")
+    # sum_P=i^N (lambda (P, t) - lambda (P, t+1)) <= 0
+    d_revert = learning.reindex(columns=learning.columns[::-1])
+    delta_revert_sum = linexpr((1, d_revert)).cumsum(axis=1)
+    next_delta_revert_sum = linexpr((-1, d_revert)).cumsum(axis=1).shift(-1).dropna()
+    lhs = delta_revert_sum.iloc[:-1] + next_delta_revert_sum
+    lhs = lhs.reindex(columns=learning.columns)
+    define_constraints(n, lhs, "<=", 0, "Carrier", "delta_segment_ub")
+
+def define_learning_variables(n, snapshots, segments=5):
+    """Define binaries for technology learning.
+
+    Define continuos variabe for technology learning for each
+    investment period, each carrier with learning rate and each segment of
+    the linear interpolation of the learning curve
+
+    binary_learning = 1 if cumulative capacity of generator carrier in investment
+                        period on line segment else
+                    = 0
+    Input:
+    ------
+        n          : pypsa network
+        snapshots  : time steps considered for optimisation
+        segments   : type(int) number of line segments for linear interpolation
+    """
+    # get carriers with learning
+    learn_i = n.carriers[n.carriers.learning_rate != 0].index
+    if learn_i.empty:
+        return
+
+    # get all investment periods
+    investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.0]
+    # create index for all line segments of the linear interpolation
+    segments_i = pd.Index(np.arange(segments))
+
+    # multiindex for every learning tech and pipe segment
+    multi_i = pd.MultiIndex.from_product([learn_i, segments_i])
+    # define learning variable (index=investment, columns=[carrier, segment])
+    learning = define_variables(n, 0, 1, "Carrier", "learning", axes=[investments, multi_i])
+
+    # add SOS2
+    # sos2 = m.addSOS(GRB.SOS_TYPE2, learning)
+
+
 def get_shift_learning(learning):
     """Shift learning binaries temporally and sets first investment period
     to no learning."""
@@ -1198,8 +1275,8 @@ def add_learning(n, snapshots, segments=5, time_delay=False):
     # consistency check
     learning_consistency_check(n)
     # binaries
-    define_learning_binaries(n, snapshots, segments)
-    define_learning_binary_constraint(n, snapshots)
+    define_learning_variables(n, snapshots, segments)
+    define_learning_constraint(n, snapshots)
     # define relation cost - cumulative installed capacity
     define_position_on_learning_curve(n, snapshots, segments, time_delay)
     # define objective function with technology learning
