@@ -85,7 +85,7 @@ def sigmoid_function(t):
 
 
 # MAIN -----------------------------------------------------------------------
-costs = pd.read_csv("/home/ws/bw0928/Dokumente/technology-data/outputs/costs_2020.csv",
+costs = pd.read_csv("/home/lisa/Documents/technology-data/outputs/costs_2020.csv",
                     index_col=[0,1])
 
 tech = "solar-utility"
@@ -155,6 +155,8 @@ y_link = m.addConstr(quicksum([weights[i]*y_samples[i] for i in range(len(y_samp
 obj = m.setObjective(y, GRB.MINIMIZE)
 # 5) Optimize
 m.optimize()
+m.write("/home/lisa/Documents/learning_curve/mip_start/test.lp")
+m.write("/home/lisa/Documents/learning_curve/mip_start/test.mps")
 
 # 6) Print the results: the optimal value for variable x
 print("Optimal value for x is: {}".format(x.X))

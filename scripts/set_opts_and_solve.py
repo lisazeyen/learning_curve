@@ -595,9 +595,9 @@ def set_scenario_opts(n, opts):
                         )
                 # TODO
                 if tech == "H2 electrolysis":
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 2e6 / factor
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 3e6 / factor
                 if tech == "H2 Electrolysis":
-                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 2e6 / factor
+                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 3e6 / factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
@@ -1379,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0",
             clusters="37",
         )
 

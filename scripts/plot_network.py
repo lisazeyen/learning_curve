@@ -311,8 +311,6 @@ def plot_map(network, components=["Link", "Store", "StorageUnit", "Generator"],
 def plot_h2_map(network):
 
     n = network.copy()
-    if "H2 pipeline" not in n.links.carrier.unique():
-        return
 
     assign_location(n)
 
@@ -335,8 +333,8 @@ def plot_h2_map(network):
         axis=1,
     ).astype(int)
     cap = n.df(comp)["p_nom_opt"]
-    cap_t = active.mul(cap, axis=0)
-    bus_sizes = n.links.loc[elec,"p_nom_opt"].groupby([n.links["bus0"], n.links.carrier]).sum() / bus_size_factor
+    cap_t = active.mul(cap, axis=0).loc[elec]
+    bus_sizes = cap_t.groupby([n.links["bus0"], n.links.carrier]).sum() / bus_size_factor
 
     # make a fake MultiIndex so that area is correct for legend
     bus_sizes.rename(index=lambda x: x.replace(" H2", ""), level=0, inplace=True)
@@ -371,75 +369,78 @@ def plot_h2_map(network):
     n.links.bus0 = n.links.bus0.str.replace(" H2", "")
     n.links.bus1 = n.links.bus1.str.replace(" H2", "")
 
-    fig, ax = plt.subplots(
-        figsize=(7, 6),
-        subplot_kw={"projection": ccrs.PlateCarree()}
-    )
+    for year in bus_sizes.columns:
 
-    n.plot(
-        bus_sizes=bus_sizes,
-        bus_colors=snakemake.config['plotting']['tech_colors'],
-        link_colors='#a2f0f2',
-        link_widths=link_widths_total,
-        branch_components=["Link"],
-        ax=ax,
-        **map_opts
-    )
+        fig, ax = plt.subplots(
+            figsize=(7, 6),
+            subplot_kw={"projection": ccrs.PlateCarree()}
+        )
+        fig.suptitle(year)
 
-    n.plot(
-        geomap=False,
-        bus_sizes=0,
-        link_colors='#72d3d6',
-        link_widths=link_widths_retro,
-        branch_components=["Link"],
-        ax=ax,
-        **map_opts
-    )
+        n.plot(
+            bus_sizes=bus_sizes[year],
+            bus_colors=snakemake.config['plotting']['tech_colors'],
+            link_colors='#a2f0f2',
+            link_widths=link_widths_total,
+            branch_components=["Link"],
+            ax=ax,
+            **map_opts
+        )
 
-    handles = make_legend_circles_for(
-        [50000, 10000],
-        scale=bus_size_factor,
-        facecolor='grey'
-    )
+        n.plot(
+            geomap=False,
+            bus_sizes=0,
+            link_colors='#72d3d6',
+            link_widths=link_widths_retro,
+            branch_components=["Link"],
+            ax=ax,
+            **map_opts
+        )
 
-    labels = ["{} GW".format(s) for s in (50, 10)]
+        handles = make_legend_circles_for(
+            [50000, 10000],
+            scale=bus_size_factor,
+            facecolor='grey'
+        )
 
-    l2 = ax.legend(
-        handles, labels,
-        loc="upper left",
-        bbox_to_anchor=(-0.03, 1.01),
-        labelspacing=1.0,
-        frameon=False,
-        title='Electrolyzer capacity',
-        handler_map=make_handler_map_to_scale_circles_as_in(ax)
-    )
+        labels = ["{} GW".format(s) for s in (50, 10)]
 
-    ax.add_artist(l2)
+        l2 = ax.legend(
+            handles, labels,
+            loc="upper left",
+            bbox_to_anchor=(-0.03, 1.2),
+            labelspacing=1.0,
+            frameon=False,
+            title='Electrolyzer capacity',
+            handler_map=make_handler_map_to_scale_circles_as_in(ax)
+        )
 
-    handles = []
-    labels = []
+        ax.add_artist(l2)
 
-    for s in (50, 10):
-        handles.append(plt.Line2D([0], [0], color="grey",
-                                  linewidth=s * 1e3 / linewidth_factor))
-        labels.append("{} GW".format(s))
+        handles = []
+        labels = []
 
-    l1_1 = ax.legend(
-        handles, labels,
-        loc="upper left",
-        bbox_to_anchor=(0.28, 1.01),
-        frameon=False,
-        labelspacing=0.8,
-        handletextpad=1.5,
-        title='H2 pipeline capacity'
-    )
+        for s in (50, 10):
+            handles.append(plt.Line2D([0], [0], color="grey",
+                                      linewidth=s * 1e3 / linewidth_factor))
+            labels.append("{} GW".format(s))
 
-    ax.add_artist(l1_1)
+        l1_1 = ax.legend(
+            handles, labels,
+            loc="upper left",
+            bbox_to_anchor=(-0.03, 0.97),
+            frameon=False,
+            labelspacing=0.8,
+            handletextpad=1.5,
+            title='H2 pipeline capacity'
+        )
 
-    fig.savefig(
-        snakemake.output.map.replace("-costs-all","-h2_network"),
-        bbox_inches="tight"
-    )
+        ax.add_artist(l1_1)
+
+        fig.savefig(
+            snakemake.output.map.replace("-costs-all","-h2_network_{}".format(year)),
+            bbox_inches="tight"
+        )
 
 
 def plot_ch4_map(network):
@@ -725,18 +726,21 @@ if __name__ == "__main__":
     if 'snakemake' not in globals():
         import os
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
             "plot_network",
-            sector_opts="Co2L-146sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth",
+            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth",
             clusters="37",
         )
 
-    n = pypsa.Network(snakemake.input.networks,
+    n = pypsa.Network(snakemake.input.network,
                       override_component_attrs=override_component_attrs)
 
     map_opts = snakemake.config['plotting']['map']
+    del map_opts["p_nom"]
+    del map_opts["figsize"]
 
     plot_map(n,
         components=["Generator", "Link", "Store"],
@@ -746,6 +750,7 @@ if __name__ == "__main__":
     plot_h2_map(n)
 
     plot_series(n, carrier="AC")
+    plot_series(n, carrier="heat")
 
     #plot_series(n, carrier="AC", name=suffix)
     #plot_series(n, carrier="heat", name=suffix)

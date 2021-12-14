@@ -652,6 +652,7 @@ def define_x_position(
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_diff_relation")
 
         # ----------------------------------------------------------
+        # sum_segments xs_shift(inv_p, carrier) = sum_segments xs(inv_p,carrier)
         lhs = (
             linexpr((1, xs_shift), (-1, xs.reindex(xs_shift.columns, axis=1)))
             .groupby(level=0, axis=1)
@@ -664,7 +665,7 @@ def define_x_position(
             linexpr(
                 (1, xs_shift.iloc[1:]),
                 (-1, xs_shift.shift().iloc[1:]),
-                (-1, xs_shift_diff.iloc[1:]),
+                (-1, xs_shift_diff.reindex(columns=xs_shift.columns).iloc[1:]),
             )
             .groupby(level=0, axis=1)
             .sum()
@@ -684,20 +685,22 @@ def define_x_position(
         x_ub = define_bounds(points, "x_fit", "upper", investments, segments).reindex(
             columns=xs.columns
         )
+        x_ub_shift = expand_series(x_high.reindex(multi_i,level=0), investments[1:]).T
         lhs = linexpr(
             (1, xs_shift.iloc[1:]),
-            (-x_ub.iloc[1:].reindex(xs_shift.columns, axis=1), learning_shift),
+            (-x_ub_shift.reindex(columns=learning_shift.columns), learning_shift),
         )
 
         define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_ub")
 
         # define lower and upper bound for xs_shift_diff -------------------
-        # lhs = linexpr(
-        #     (1, xs_shift_diff.iloc[1:]),
-        #     (-x_lb.iloc[1:].reindex(xs_shift_diff.columns, axis=1), learning_shift),
-        # )
+        x_lb_shift = expand_series(x_high.reindex(multi_i,level=0), investments[1:]).T
+        lhs = linexpr(
+            (1, xs_shift.iloc[1:]),
+            (-x_lb_shift.reindex(columns=learning_shift.columns), learning_shift),
+        )
 
-        # define_constraints(n, lhs, ">=", 0, "Carrier", "xs_shift_diff_lb")
+        define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_lb")
 
         x_ub = define_bounds(points, "x_fit", "upper", investments, segments).reindex(
             columns=xs.columns
@@ -930,11 +933,11 @@ def define_cumulative_cost(
         #     .cumsum()
         #     .reindex(learn_i, axis=1)
         # )
-        rhs = pd.DataFrame(0, index=investments, columns=lhs.columns)
-        rhs.iloc[0, :] = -y_intercept.reindex(learn_i, axis=1).loc[0]
-        rhs = expand_series(-y_intercept.loc[0], investments).T.reindex(
-            lhs.columns, axis=1
-        )
+        rhs = -y_intercept_t.xs(0, level=1, axis=1).reindex(lhs.columns, axis=1)
+        # rhs.iloc[0, :] = -y_intercept.reindex(lhs.columns, axis=1).loc[0]
+        # rhs = expand_series(-y_intercept.loc[0], investments).T.reindex(
+        #     lhs.columns, axis=1
+        # )
 
     # according to Barrettro p.65 eq. (14) ---
     else:

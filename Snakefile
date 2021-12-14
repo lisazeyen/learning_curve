@@ -145,7 +145,7 @@ rule copy_config:
 
 rule plot_network:
     input:
-        network="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}.nc",
+        network="results/" + config['run'] +"/postnetworks/elec_s_EU_{sector_opts}.nc",
     output:
         map="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-costs-all.pdf",
         supply="results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-supply.pdf",
