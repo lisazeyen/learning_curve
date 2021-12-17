@@ -634,10 +634,6 @@ def define_x_position(
         xs_shift = define_variables(
             n, 0, x_high.max(), c, "xs_shift", axes=[investments, multi_i]
         )
-        # define difference called xs_shift_dff ----------------
-        xs_shift_diff = define_variables(
-            n, 0, x_high.max(), c, "xs_shift_diff", axes=[investments, multi_i]
-        )
 
         # define relation xs <-> xs_shift ------------------------------------
         # no learning first investment period
@@ -647,9 +643,6 @@ def define_x_position(
         )
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_delay")
 
-        # xs_shift_diff same for first investment period
-        lhs = linexpr((1, xs_shift.iloc[0]), (-1, xs_shift_diff.iloc[0]))
-        define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_diff_relation")
 
         # ----------------------------------------------------------
         # sum_segments xs_shift(inv_p, carrier) = sum_segments xs(inv_p,carrier)
@@ -660,17 +653,6 @@ def define_x_position(
         )
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_xs_relation")
 
-        # xs_diff
-        lhs = (
-            linexpr(
-                (1, xs_shift.iloc[1:]),
-                (-1, xs_shift.shift().iloc[1:]),
-                (-1, xs_shift_diff.reindex(columns=xs_shift.columns).iloc[1:]),
-            )
-            .groupby(level=0, axis=1)
-            .sum()
-        )
-        define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_diff_relation")
 
         # define lower and upper bound for xs_shift -------------------------
         learning_shift = learning.shift().dropna().reindex(xs_shift.columns, axis=1)
@@ -702,12 +684,6 @@ def define_x_position(
 
         define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_lb")
 
-        x_ub = define_bounds(points, "x_fit", "upper", investments, segments).reindex(
-            columns=xs.columns
-        )
-        lhs = linexpr((1, xs_shift_diff.iloc[1:]), (-x_high.max(), learning_shift),)
-
-        define_constraints(n, lhs, "<=", 0, "Carrier", "xs_shift_diff_ub")
 
     lhs = linexpr((1, xs), (-x_lb, learning))
 
@@ -910,31 +886,30 @@ def define_cumulative_cost(
 
     # cumulative_cost = xs(_shift) * slope + y_intercept * learning(_shift)
     if time_delay:
-        xs_shift_diff = get_var(n, c, "xs_shift_diff")
+        xs_shift = get_var(n, c, "xs_shift")
         learning_shift = (
-            learning.shift().dropna().reindex(xs_shift_diff.columns, axis=1)
+            learning.shift().dropna().reindex(xs_shift.columns, axis=1)
         )
         lhs = (
-            linexpr((slope_t.reindex(xs_shift_diff.columns, axis=1), xs_shift_diff))
+            linexpr((slope_t.reindex(xs_shift.columns, axis=1), xs_shift))
             .groupby(level=0, axis=1)
             .sum(**agg_group_kwargs)
-            .cumsum()
             .reindex(learn_i, axis=1)
         )
-        # lhs.iloc[1:] += (
-        #     linexpr(
-        #         (
-        #             y_intercept_t.iloc[1:].reindex(xs_shift_diff.columns, axis=1),
-        #             learning_shift,
-        #         )
-        #     )
-        #     .groupby(level=0, axis=1)
-        #     .sum(**agg_group_kwargs)
-        #     .cumsum()
-        #     .reindex(learn_i, axis=1)
-        # )
-        rhs = -y_intercept_t.xs(0, level=1, axis=1).reindex(lhs.columns, axis=1)
-        # rhs.iloc[0, :] = -y_intercept.reindex(lhs.columns, axis=1).loc[0]
+        lhs.iloc[1:] += (
+            linexpr(
+                (
+                    y_intercept_t.iloc[1:].reindex(xs_shift.columns, axis=1),
+                    learning_shift,
+                )
+            )
+            .groupby(level=0, axis=1)
+            .sum(**agg_group_kwargs)
+            .reindex(learn_i, axis=1)
+        )
+
+        rhs = pd.DataFrame(0, index=lhs.index, columns=lhs.columns)
+        rhs.iloc[0, :] = -y_intercept.reindex(lhs.columns, axis=1).loc[0]
         # rhs = expand_series(-y_intercept.loc[0], investments).T.reindex(
         #     lhs.columns, axis=1
         # )

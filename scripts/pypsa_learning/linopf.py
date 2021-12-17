@@ -1830,6 +1830,3 @@ def ilopf(
     network_lopf(n, snapshots, **kwargs)
     n.lines.loc[ext_i, "s_nom_extendable"] = True
     n.links.loc[ext_links_i, "p_nom_extendable"] = True
-
-
-#%%
