@@ -1115,16 +1115,21 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        from _helpers import mock_snakemake
+        from vresutils import Dict
+        import yaml
+        snakemake = Dict()
+        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_moreinvp/configs/config.yaml', encoding='utf8') as f:
+            snakemake.config = yaml.safe_load(f)
+        #overwrite some options
+        snakemake.input = Dict()
+        snakemake.input['costs'] = "data/costs/costs_2020.csv"
+        snakemake.output = Dict()
+        for item in outputs:
+            snakemake.output[item] =  'results/{name}/csvs/{item}.csv'.format(name=snakemake.config['run'],item=item)
 
-        snakemake = mock_snakemake(
-            "make_summary_sec",
-            sector_opts="Co2L-2p24h-learnsolarp0-learnonwindp10",
-            clusters="37",
-        )
+
         os.chdir("/home/lisa/mnt/lisa/learning_curve/")
         # os.chdir("/home/lisa/Documents/learning_curve/")
 

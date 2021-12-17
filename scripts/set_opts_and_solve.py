@@ -1426,6 +1426,8 @@ if __name__ == "__main__":
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
         n.carriers.loc["DAC", "global_capacity"] = 1e3
+    if "H2 Electrolysis" in n.carriers.index:
+        n.carriers.loc["H2 Electrolysis", "global_capacity"] = 1e3
 
     # aggregate network temporal
     if snakemake.config["temporal_presolve"] != "None":
