@@ -1184,7 +1184,7 @@ def prepare_lopf(
     the lp file
 
     """
-    n._xCounter, n._cCounter = 1, 1
+    n._xCounter, n._cCounter, n._SOScCounter = 1, 1, 1
     n.vars, n.cons = Dict(), Dict()
 
     cols = ["component", "name", "pnl", "specification"]

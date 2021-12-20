@@ -238,6 +238,27 @@ def write_constraint(n, lhs, sense, rhs, axes=None):
     return to_pandas(cons, *axes)
 
 
+
+def write_SOS2_constraint(n, variables):
+    """
+    Writer function for writing out mutliple constraints to the corresponding
+    constraints file. If lower and upper are numpy.ndarrays it axes must not be
+    None but a tuple of (index, columns) or (index).
+    Return a series or frame with constraint references.
+    """
+    axes, shape, size = _get_handlers(variables)
+    breakpoint()
+    if not size:
+        return pd.Series()
+    n._SOScCounter += size
+    cons = np.arange(n._SOScCounter - size, n._SOScCounter).reshape(shape)
+    n.constraints_f.write("s0:  S2 :: " +
+        join_exprs(
+             _str_array(cons, True) + ":\n 1"  "\n\n"
+        )
+    )
+    return to_pandas(cons, *axes)
+
 def write_binary(n, axes):
     """
     Writer function for writing out mutliple binary-variables at a time.
@@ -824,6 +845,7 @@ def run_and_read_gurobi(
             "https://www.gurobi.com/documentation/"
         )
     import gurobipy
+    from gurobipy import GRB
 
     # disable logging for this part, as gurobi output is doubled otherwise
     logging.disable(50)

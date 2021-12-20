@@ -30,6 +30,7 @@ from pypsa_learning.linopt import (
     define_constraints,
     define_variables,
     define_binaries,
+    write_SOS2_constraint
 )
 
 from distutils.version import LooseVersion
@@ -627,6 +628,7 @@ def define_learning_constraint(n, snapshots):
     lhs = lhs.reindex(columns=learning.columns)
     define_constraints(n, lhs, "<=", 0, "Carrier", "delta_segment_ub")
 
+
 def define_learning_variables(n, snapshots, segments=5):
     """Define binaries for technology learning.
 
@@ -659,6 +661,7 @@ def define_learning_variables(n, snapshots, segments=5):
     learning = define_variables(n, 0, 1, "Carrier", "learning", axes=[investments, multi_i])
 
     # add SOS2
+    write_SOS2_constraint(n, learning)
     # sos2 = m.addSOS(GRB.SOS_TYPE2, learning)
 
 
@@ -798,7 +801,7 @@ def define_x_position(
     define_constraints(n, lhs, "<=", 0, "Carrier", "xs_ub")
 
 
-def define_cumulative_capacity(n, x_low, x_high, investments, learn_i):
+def define_cumulative_capacity(n, x_low, x_high, investments, learn_i, points):
     """Define global cumulative capacity.
 
     Define variable and constraint for global cumulative capacity.
@@ -817,12 +820,12 @@ def define_cumulative_capacity(n, x_low, x_high, investments, learn_i):
     cum_cap = define_variables(
         n, x_low, x_high, c, "cumulative_capacity", axes=[investments, learn_i]
     )
-
-    # capacity at each line segment
-    xs = get_var(n, c, "xs")
+    points_x_fit = expand_series(points.xs("x_fit", level=1, axis=1).unstack(), investments).T
+    # learning
+    learning = get_var(n, c, "learning")
     # sum over all line segments (lambda) = cumulative installed capacity
     lhs = (
-        linexpr((1, xs))
+        linexpr((points_x_fit.reindex(columns=learning.columns), learning))
         .groupby(level=0, axis=1)
         .sum(**agg_group_kwargs)
         .reindex(columns=cum_cap.columns)
@@ -978,12 +981,14 @@ def define_cumulative_cost(
     )
     # Variables ---
     # capacity at each line segment
-    xs = get_var(n, c, "xs")
+    # xs = get_var(n, c, "xs")
     # learning binaries
     learning = get_var(n, c, "learning")
+    # y fit expand per investment period
+    points_y_fit = expand_series(points.xs("y_fit", level=1, axis=1).unstack(), investments).T
     #  make sure that columns have same order
     y_intercept_t = y_intercept_t.reindex(learning.columns, axis=1)
-    slope_t = slope_t.reindex(xs.columns, axis=1)
+    # slope_t = slope_t.reindex(xs.columns, axis=1)
 
     # cumulative_cost = xs(_shift) * slope + y_intercept * learning(_shift)
     if time_delay:
@@ -1020,7 +1025,7 @@ def define_cumulative_cost(
     else:
 
         lhs = (
-            linexpr((y_intercept_t, learning), (slope_t, xs))
+            linexpr((points_y_fit.reindex(learning.columns, axis=1), learning))
             .groupby(level=0, axis=1)
             .sum(**agg_group_kwargs)
             .reindex(learn_i, axis=1)
@@ -1112,12 +1117,12 @@ def define_position_on_learning_curve(n, snapshots, segments=5, time_delay=False
 
     # ######## CAPACITY #######################################################
     # -------- define variable xs for capacity per line segment  --------------
-    define_x_position(
-        n, x_low, x_high, investments, multi_i, learn_i, points, segments, time_delay
-    )
+    # define_x_position(
+    #     n, x_low, x_high, investments, multi_i, learn_i, points, segments, time_delay
+    # )
     # ------------------------------------------------------------------------
     # define cumulative capacity
-    define_cumulative_capacity(n, x_low, x_high, investments, learn_i)
+    define_cumulative_capacity(n, x_low, x_high, investments, learn_i, points)
     # -------------------------------------------------------------------------
     # define new installed capacity per period
     define_capacity_per_period(
