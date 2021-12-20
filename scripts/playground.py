@@ -122,6 +122,7 @@ plt.xlabel("t")
 plt.axvline(x=0, color="gray")
 plt.axhline(y=0, color="gray")
 # x is a variable which needs to be solved and y another variable which depends
+plt.plot([x.X], [y.X], marker="*", markersize=12, color="r")
 # non-linear on x
 # %%
 # from https://medium.com/bcggamma/hands-on-modeling-non-linearity-in-linear-optimization-problems-f9da34c23c9a
@@ -150,6 +151,7 @@ weight_sum = m.addConstr(quicksum(weights) == 1)
 x_link = m.addConstr(quicksum([weights[i]*x_samples[i] for i in range(len(x_samples))]) == x)
 y_link = m.addConstr(quicksum([weights[i]*y_samples[i] for i in range(len(y_samples))]) == y)
 
+y_cons = m.addConstr(-2.5<=x)
 # 4) Set the objective
 # obj = m.setObjective(y, GRB.MAXIMIZE)
 obj = m.setObjective(y, GRB.MINIMIZE)
@@ -179,3 +181,9 @@ except AttributeError:
     print("---\nShadow prices of MILP couldn't be parsed\n ---")
     constraints_dual = pd.Series(index=[c.ConstrName for c in m.getConstrs()])
 objective = m.ObjVal
+#%%
+ax=points.droplevel(level=0,axis=1).set_index("x_fit").plot(marker="o",
+                                                         markersize=10)
+lösung.columns = ["x", "y"]
+
+lösung.set_index("x").plot(ax=ax, marker="s", lw=0, markersize=12)

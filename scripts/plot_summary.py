@@ -865,18 +865,23 @@ def learning_cost_vs_curve():
 
             check = cum_cost.rename(index=global_cum_check.to_dict())
             check.name = "cumulative cost"
+            investment_cost = ((sols["inv_per_period"] /
+                               sols["cap_per_period"])
+                               .groupby(level=0, axis=1).first()
+                               .fillna(method="ffill"))
+            investment_cost.rename(index=lambda x: str(x), inplace=True)
 
         except (OSError, pd.errors.ParserError):
             sols = pd.DataFrame()
             check = pd.DataFrame()
             print(label, " not solved yet or sequential model.\n")
+            investment_cost = cost_learning[scenario]
         # ------------------------------------------------------------
 
         initial_capacity = learn_carrier.loc["global_capacity", scenario]
         global_factor = learn_carrier.loc["global_factor", scenario]
         global_cum = (cum_cap[scenario] / global_factor) + initial_capacity
 
-        investment_cost = cost_learning[scenario]
         tot = pd.concat([global_cum, investment_cost], axis=1)
         tot.columns = ["cap", "cost"]
         max_capacity = learn_carrier.loc["max_capacity", scenario]
@@ -894,7 +899,8 @@ def learning_cost_vs_curve():
         caps.index = caps["cumualtive capacity"]
         # cumulative investment (right y-axis)
         y_cum = caps.apply(
-            lambda x: cumulative_cost_curve(x, learning_rate, c0, initial_capacity)
+            lambda x: cumulative_cost_curve(x, learning_rate, c0, initial_capacity,
+                                            with_previous_TC=True)
         )
         y_cum.columns = ["cumulative investment costs"]
         # specific investment costs [Eur/MW] (left y-axis)
@@ -924,7 +930,7 @@ def learning_cost_vs_curve():
         plt.step(
             points.xs("x_fit", level=1, axis=1),
             interpolated_costs,
-            where="pre",
+            where="post",#"pre",
             lw=2,
             ls=":",
             color="green",
@@ -1084,13 +1090,13 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
 
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_moreinvp/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/Documents/learning_curve/results/sos2/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         #overwrite some options
@@ -1121,7 +1127,7 @@ if __name__ == "__main__":
         learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
         )
 
-        os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        os.chdir("/home/lisa/Documents/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"

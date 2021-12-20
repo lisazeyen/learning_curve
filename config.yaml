@@ -1,4 +1,4 @@
-run: "newbudget_constraint"
+run: "sos2"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0, Co2L-148sn-learnH2xElectrolysisp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-seqcost-limitgrowth, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0, Co2L-148sn-learnH2xElectrolysisp0-learnDACp0-seqcost-limitgrowth]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0-notimedelay, Co2L-148sn-learnDACp0-notimedelay, Co2L-148sn-learnsolarp0-notimedelay]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -262,6 +262,7 @@ plotting:
     lines: '#6c9459'
     transmission lines: '#6c9459'
     electricity distribution grid: '#97ad8c'
+    low voltage: '#97ad8c'
     # electricity demand
     Electric load: '#110d63'
     electric demand: '#110d63'

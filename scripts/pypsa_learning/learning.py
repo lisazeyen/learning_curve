@@ -615,18 +615,18 @@ def define_learning_constraint(n, snapshots):
 
     # (2) experience must grow constraints (p.67 Barretto, eq 19)
     # experience tech at t+1 either remains at segment or moves further
-    delta_sum = linexpr((1, learning)).cumsum(axis=1)
-    next_delta_sum = linexpr((-1, learning)).cumsum(axis=1).shift(-1).dropna()
-    # sum_P=1^i (lambda (P, t) - lambda (P, t+1)) >= 0
-    lhs = delta_sum.iloc[:-1] + next_delta_sum
-    define_constraints(n, lhs, ">=", 0, "Carrier", "delta_segment_lb")
-    # sum_P=i^N (lambda (P, t) - lambda (P, t+1)) <= 0
-    d_revert = learning.reindex(columns=learning.columns[::-1])
-    delta_revert_sum = linexpr((1, d_revert)).cumsum(axis=1)
-    next_delta_revert_sum = linexpr((-1, d_revert)).cumsum(axis=1).shift(-1).dropna()
-    lhs = delta_revert_sum.iloc[:-1] + next_delta_revert_sum
-    lhs = lhs.reindex(columns=learning.columns)
-    define_constraints(n, lhs, "<=", 0, "Carrier", "delta_segment_ub")
+    # delta_sum = linexpr((1, learning)).cumsum(axis=1)
+    # next_delta_sum = linexpr((-1, learning)).cumsum(axis=1).shift(-1).dropna()
+    # # sum_P=1^i (lambda (P, t) - lambda (P, t+1)) >= 0
+    # lhs = delta_sum.iloc[:-1] + next_delta_sum
+    # define_constraints(n, lhs, ">=", 0, "Carrier", "delta_segment_lb")
+    # # sum_P=i^N (lambda (P, t) - lambda (P, t+1)) <= 0
+    # d_revert = learning.reindex(columns=learning.columns[::-1])
+    # delta_revert_sum = linexpr((1, d_revert)).cumsum(axis=1)
+    # next_delta_revert_sum = linexpr((-1, d_revert)).cumsum(axis=1).shift(-1).dropna()
+    # lhs = delta_revert_sum.iloc[:-1] + next_delta_revert_sum
+    # lhs = lhs.reindex(columns=learning.columns)
+    # define_constraints(n, lhs, "<=", 0, "Carrier", "delta_segment_ub")
 
 
 def define_learning_variables(n, snapshots, segments=5):
@@ -653,7 +653,7 @@ def define_learning_variables(n, snapshots, segments=5):
     # get all investment periods
     investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.0]
     # create index for all line segments of the linear interpolation
-    segments_i = pd.Index(np.arange(segments))
+    segments_i = pd.Index(np.arange(segments+1))
 
     # multiindex for every learning tech and pipe segment
     multi_i = pd.MultiIndex.from_product([learn_i, segments_i])
@@ -661,8 +661,9 @@ def define_learning_variables(n, snapshots, segments=5):
     learning = define_variables(n, 0, 1, "Carrier", "learning", axes=[investments, multi_i])
 
     # add SOS2
-    for year in investments:
-        sos2 = write_SOS2_constraint(n, learning.loc[[year]])
+    for carrier in learn_i:
+        for year in investments:
+            sos2 = write_SOS2_constraint(n, learning.loc[[year], [carrier]])
     # sos2 = m.addSOS(GRB.SOS_TYPE2, learning)
 
 
@@ -1112,7 +1113,7 @@ def define_position_on_learning_curve(n, snapshots, segments=5, time_delay=False
     # get all investment periods
     investments = snapshots.levels[0] if isinstance(snapshots, pd.MultiIndex) else [0.0]
     # create index for all line segments of the linear interpolation
-    segments_i = pd.Index(np.arange(segments))
+    segments_i = pd.Index(np.arange(segments+1))
     # multiindex for every learning tech and pipe segment
     multi_i = pd.MultiIndex.from_product([learn_i, segments_i])
 

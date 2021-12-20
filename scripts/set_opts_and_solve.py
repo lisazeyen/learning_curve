@@ -1379,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-notimedelay",
+            sector_opts="Co2L-148sn-learnsolarp0-notimedelay",
             clusters="37",
         )
 
@@ -1517,10 +1517,10 @@ if __name__ == "__main__":
                 # store_basis=True,
             )
             # for debugging
-            if hasattr(n, "obj") and hasattr(n.sols, "Carrier"):
+            if hasattr(n, "objective") and hasattr(n.sols, "Carrier"):
                 try:
                     for key in n.sols["Carrier"]["pnl"].keys():
-                        sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first())
+                        sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first(), ndigits=2)
                         if not isinstance(sol_attr.columns, pd.MultiIndex):
                             segments_i = pd.Index(np.arange(snakemake.config["segments"]))
                             sol_attr = sol_attr.reindex(
