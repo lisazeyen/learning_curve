@@ -266,7 +266,7 @@ def plot_costs():
 
     ax.grid(axis="y")
 
-    ax.legend(handles, labels, ncol=4, loc="upper left", bbox_to_anchor=(0.01, 1.25))
+    ax.legend(handles, labels, ncol=4, loc="upper left", bbox_to_anchor=(0.01, 1.7))
 
     fig.savefig(snakemake.output.costs1, transparent=True, bbox_inches="tight")
 
@@ -300,7 +300,7 @@ def plot_costs():
         handles.reverse()
         labels.reverse()
 
-        ax[1].legend(handles, labels, ncol=1, bbox_to_anchor=(1, 1))
+        ax[1].legend(handles, labels, ncol=1, bbox_to_anchor=(1.5, 2))
 
     fig.savefig(snakemake.output.costs2, bbox_inches="tight")
 
@@ -440,6 +440,8 @@ def plot_balances():
             df.index.difference(preferred_order)
         )
 
+        df = df.droplevel(level=[0,1], axis=1)
+        # df = df[wished]
         new_columns = df.columns.sort_values()
 
         dict_re = {
@@ -1082,16 +1084,44 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        from _helpers import mock_snakemake
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
 
-        snakemake = mock_snakemake(
-            "plot_summary",
-            sector_opts="Co2L-876h-learnsolarp0-learnonwindp10",
-            clusters="37",
+        from vresutils import Dict
+        import yaml
+        snakemake = Dict()
+        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_moreinvp/configs/config.yaml', encoding='utf8') as f:
+            snakemake.config = yaml.safe_load(f)
+            config  = snakemake.config
+        #overwrite some options
+        snakemake.input = Dict(
+        costs_csv="results"  + '/' + config['run'] + '/csvs/costs.csv',
+        costs="data/costs/",
+        # energy="results"  + '/' + config['run'] + '/csvs/energy.csv',
+        balances="results"  + '/' + config['run'] + '/csvs/supply_energy.csv',
+        eea ="data/eea/UNFCCC_v24.csv",
+        countries="results"  + '/' + config['run'] + '/csvs/nodal_capacities.csv',
+        co2_emissions="results"  + '/' + config['run'] + '/csvs/co2_emissions.csv',
+        capital_costs_learning="results"  + '/' + config['run'] + '/csvs/capital_costs_learning.csv',
+        capacities="results"  + '/' + config['run'] + '/csvs/capacities.csv',
+        cumulative_capacities="results"  + '/' + config['run'] + '/csvs/cumulative_capacities.csv',
+        learn_carriers="results"  + '/' + config['run'] + '/csvs/learn_carriers.csv',
+        capital_cost="results"  + '/' + config['run'] + '/csvs/capital_cost.csv',)
+
+        snakemake.output = Dict(
+        costs1="results"  + '/' + config['run'] + '/graphs/costs.pdf',
+        costs2="results"  + '/' + config['run'] + '/graphs/costs2.pdf',
+        costs3="results"  + '/' + config['run'] + '/graphs/total_costs_per_year.pdf',
+        # energy="results"  + '/' + config['run'] + '/graphs/energy.pdf',
+        balances="results"  + '/' + config['run'] + '/graphs/balances-energy.pdf',
+        co2_emissions="results"  + '/' + config['run'] + '/graphs/carbon_budget_plot.pdf',
+        capacities="results"  + '/' + config['run'] + '/graphs/capacities.pdf',
+        capital_costs_learning="results"  + '/' + config['run'] + '/graphs/capital_costs_learning.pdf',
+        annual_investments="results"  + '/' + config['run'] + '/graphs/annual_investments.pdf',
+        learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
         )
+
+        os.chdir("/home/lisa/mnt/lisa/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"
