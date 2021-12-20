@@ -716,7 +716,7 @@ def plot_series(network, carrier="AC", name="test"):
         fig.tight_layout()
 
         fig.savefig(
-            snakemake.output.supply[:-4] + "_{}.pdf".format(year),
+            snakemake.output.supply[:-4] + "_{}-{}.pdf".format(carrier, year),
             transparent=True,
             bbox_inches="tight"
         )
@@ -731,7 +731,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "plot_network",
-            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-learnDACp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-limitgrowth",
+            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-seqcost-notimedelay",
             clusters="37",
         )
 

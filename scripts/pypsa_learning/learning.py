@@ -661,7 +661,8 @@ def define_learning_variables(n, snapshots, segments=5):
     learning = define_variables(n, 0, 1, "Carrier", "learning", axes=[investments, multi_i])
 
     # add SOS2
-    write_SOS2_constraint(n, learning)
+    for year in investments:
+        sos2 = write_SOS2_constraint(n, learning.loc[[year]])
     # sos2 = m.addSOS(GRB.SOS_TYPE2, learning)
 
 

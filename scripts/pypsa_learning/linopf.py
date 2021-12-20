@@ -1200,17 +1200,20 @@ def prepare_lopf(
     fdc, constraints_fn = mkstemp(".txt", "pypsa-constraints-", **tmpkwargs)
     fdb, bounds_fn = mkstemp(".txt", "pypsa-bounds-", **tmpkwargs)
     fdi, binaries_fn = mkstemp(".txt", "pypsa-binaries-", **tmpkwargs)
+    fds, sos_fn = mkstemp(".txt", "pypsa-sos-", **tmpkwargs)
     fdp, problem_fn = mkstemp(".lp", "pypsa-problem-", **tmpkwargs)
 
     n.objective_f = open(objective_fn, mode="w")
     n.constraints_f = open(constraints_fn, mode="w")
     n.bounds_f = open(bounds_fn, mode="w")
     n.binaries_f = open(binaries_fn, mode="w")
+    n.sos_f = open(sos_fn, mode="w")
 
     n.objective_f.write("\* LOPF *\n\nmin\nobj:\n")
     n.constraints_f.write("\n\ns.t.\n\n")
     n.bounds_f.write("\nbounds\n")
     n.binaries_f.write("\nbinary\n")
+    n.sos_f.write("\nSOS\n")
 
     if typical_period:
         logger.info("assuming storage constraints for typical periods.")
@@ -1250,7 +1253,7 @@ def prepare_lopf(
     if extra_functionality is not None:
         extra_functionality(n, snapshots)
 
-    n.binaries_f.write("end\n")
+    n.sos_f.write("end\n")
 
     # explicit closing with file descriptor is necessary for windows machines
     for f, fd in (
@@ -1258,6 +1261,7 @@ def prepare_lopf(
         ("constraints_f", fdc),
         ("objective_f", fdo),
         ("binaries_f", fdi),
+        ("sos_f", fds),
     ):
         getattr(n, f).close()
         delattr(n, f)
@@ -1265,7 +1269,7 @@ def prepare_lopf(
 
     # concate files
     with open(problem_fn, "wb") as wfd:
-        for f in [objective_fn, constraints_fn, bounds_fn, binaries_fn]:
+        for f in [objective_fn, constraints_fn, bounds_fn, binaries_fn, sos_fn]:
             with open(f, "rb") as fd:
                 shutil.copyfileobj(fd, wfd)
             if not keep_files:

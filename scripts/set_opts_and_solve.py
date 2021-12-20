@@ -1046,7 +1046,7 @@ def prepare_network(n, solve_opts=None):
                 n,
                 snapshots,
                 segments=snakemake.config["segments"],
-                time_delay=snakemake.config["time_delay"],
+                time_delay=time_delay, #snakemake.config["time_delay"],
             )
             add_carbon_neutral_constraint(n, snapshots)
             add_carbon_budget_constraint(n, snapshots)
@@ -1379,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-learnoffwindp0",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-notimedelay",
             clusters="37",
         )
 
@@ -1544,7 +1544,7 @@ if __name__ == "__main__":
                 time_delay=time_delay,
             )
             n.buses_t.v_ang = n.buses_t.v_ang.astype(float)
-
+#%%
         n.export_to_netcdf(snakemake.output.network)
 
         sols.to_csv(snakemake.output.sols)

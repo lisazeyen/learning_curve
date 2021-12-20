@@ -81,7 +81,7 @@ def sigmoid_function(t):
     """
     s-shape function
     """
-    return (1 / (1 + math.exp(-t)))
+    return (1 / (1 + np.exp(-t)))
 
 
 # MAIN -----------------------------------------------------------------------
@@ -155,8 +155,27 @@ y_link = m.addConstr(quicksum([weights[i]*y_samples[i] for i in range(len(y_samp
 obj = m.setObjective(y, GRB.MINIMIZE)
 # 5) Optimize
 m.optimize()
-m.write("/home/lisa/Documents/learning_curve/mip_start/test.lp")
-m.write("/home/lisa/Documents/learning_curve/mip_start/test.mps")
+m.write("/home/lisa/Documents/learning_curve/mip_start/test_sos2.lp")
+m.write("/home/lisa/Documents/learning_curve/mip_start/test_sos2.mps")
 
 # 6) Print the results: the optimal value for variable x
 print("Optimal value for x is: {}".format(x.X))
+#%%
+import gurobipy
+from gurobipy import GRB
+from pypsa_learning.linopt import set_int_index
+
+problem_fn = "/home/lisa/Documents/learning_curve/mip_start/test.lp"
+problem_fn = "/home/lisa/Documents/learning_curve/mip_start/pypsa-problem-at5rxsrw.lp"
+m = gurobipy.read(problem_fn)
+m.optimize()
+
+variables_sol = pd.Series({v.VarName: v.x for v in m.getVars()}).pipe(set_int_index)
+try:
+    constraints_dual = pd.Series({c.ConstrName: c.Pi for c in m.getConstrs()}).pipe(
+        set_int_index
+    )
+except AttributeError:
+    print("---\nShadow prices of MILP couldn't be parsed\n ---")
+    constraints_dual = pd.Series(index=[c.ConstrName for c in m.getConstrs()])
+objective = m.ObjVal

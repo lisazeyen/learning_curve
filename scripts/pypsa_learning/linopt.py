@@ -247,17 +247,16 @@ def write_SOS2_constraint(n, variables):
     Return a series or frame with constraint references.
     """
     axes, shape, size = _get_handlers(variables)
-    breakpoint()
     if not size:
         return pd.Series()
-    n._SOScCounter += size
-    cons = np.arange(n._SOScCounter - size, n._SOScCounter).reshape(shape)
-    n.constraints_f.write("s0:  S2 :: " +
+    cons = np.arange(variables.size).reshape(variables.shape) + 1
+    n.sos_f.write("s{}: S2 :: ".format(n._SOScCounter) +
         join_exprs(
-             _str_array(cons, True) + ":\n 1"  "\n\n"
-        )
+             "x" + _str_array(variables, True) + ":" + _str_array(cons, True) + " "
+        ) + "\n\n"
     )
-    return to_pandas(cons, *axes)
+    n._SOScCounter += 1
+    return to_pandas(variables)
 
 def write_binary(n, axes):
     """
@@ -950,7 +949,6 @@ def run_and_read_gurobi(
 
     if termination_condition not in ["optimal", "suboptimal"]:
         return status, termination_condition, None, None, None
-
     variables_sol = pd.Series({v.VarName: v.x for v in m.getVars()}).pipe(set_int_index)
     try:
         constraints_dual = pd.Series({c.ConstrName: c.Pi for c in m.getConstrs()}).pipe(
