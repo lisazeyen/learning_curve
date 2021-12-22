@@ -1379,7 +1379,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnsolarp0-notimedelay",
+            sector_opts="Co2L-148sn-learnsolarp0-learnDACp0",
             clusters="37",
         )
 

@@ -917,8 +917,8 @@ def learning_cost_vs_curve():
             scenario[-1],
         )
         # get interpolation of specific investment costs
-        interpolated_costs = get_slope(points).rename(index=lambda x: x + 1)
-        interpolated_costs.loc[0] = c0
+        interpolated_costs = get_slope(points)#.rename(index=lambda x: x + 1)
+        interpolated_costs.loc[len(interpolated_costs)] = interpolated_costs.iloc[-1]
 
         # convert Eur/MW to Eur/kW
         interpolated_costs = interpolated_costs.sort_index() * 1e-3

@@ -731,7 +731,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "plot_network",
-            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-seqcost-notimedelay",
+            sector_opts="Co2L-3h-learnH2xElectrolysisp0-seqcost-notimedelay",
             clusters="37",
         )
 
