@@ -34,7 +34,7 @@ if 'snakemake' not in globals():
     from vresutils.snakemake import MockSnakemake
     import yaml
     import os
-    os.chdir("/home/ws/bw0928/Dokumente/learning_curve/scripts")
+    os.chdir("/home/lisa/Documents/learning_curve/scripts")
     snakemake = MockSnakemake(
         input=dict(IRENA= "data/IRENA_Stats_Tool_data.csv",),
         output=dict(global_capacities= "data/global_capacities.csv",
@@ -85,8 +85,20 @@ global_caps = capacities['Electricity Installed Capacity (MW)'].groupby(capaciti
 # https://www.researchgate.net/publication/321682272_Future_cost_and_performance_of_water_electrolysis_An_expert_elicitation_study
 # appendix figure B.1
 # IRENA 20 GW https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
-# check https://www.iea.org/reports/hydrogen looks much less 2020 100 MW/year
-global_caps.loc["H2 electrolysis"] = 20*1e3  # figure in units GW_el
+# check https://www.iea.org/reports/hydrogen much less 2020 300 MW in 2020
+# "Electrolysers have reached enough maturity to scale up manufacturing and
+# deployment to significantly reduce costs, which is reflected in three
+# consecutive years of record capacity deployment in 2018, 2019 and 2020.
+# Despite the impact of the Covid‑19 pandemic, which has delayed a significant
+# number of projects, close to 70 MW of electrolysis became operational in 2020,
+# bringing total installed capacity to almost 300 MW. Europe has 40% of global
+# installed capacity and will remain the dominant region thanks to the stimulus
+# of policy support from numerous hydrogen strategies adopted in the last year
+# and the prominence of electrolytic hydrogen in the Covid‑19 recovery packages
+# of countries such as Germany, France and Spain."
+# https://www.iea.org/data-and-statistics/data-product/hydrogen-projects-database
+
+global_caps.loc["H2 electrolysis"] = 300
 index = index.union(["H2 electrolysis"])
 
 # H2 fuel cell #################################################
@@ -111,7 +123,7 @@ index = index.union(["battery inverter"])
     # "Fifteen direct air capture plants are currently operational in Europe,
     # the United States and Canada. Most of these plants are small and sell the
     # captured CO2 for use – for carbonating drinks, for example."
-global_caps.loc['DAC'] = 1  # TODO
+global_caps.loc['DAC'] = 10  # TODO
 index = index.union(['DAC'])
 
 # save global capacities ####################################
@@ -122,5 +134,3 @@ global_caps.loc[index].to_csv(snakemake.output.global_capacities)
 fraction = cap_local.groupby(level=0).sum(**agg_group_kwargs) / global_caps.loc[index]
 fraction.name = "Fraction of global installed capacity"
 fraction.to_csv(snakemake.output.fraction)
-
-

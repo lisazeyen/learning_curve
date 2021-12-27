@@ -1120,7 +1120,7 @@ if __name__ == "__main__":
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_8cts/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/sos2_timedelay_moreinvp_notimedelay/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         snakemake.input = Dict()

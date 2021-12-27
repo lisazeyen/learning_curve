@@ -725,15 +725,22 @@ def plot_series(network, carrier="AC", name="test"):
 if __name__ == "__main__":
     if 'snakemake' not in globals():
         import os
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        from _helpers import mock_snakemake
+        from vresutils import Dict
+        import yaml
+        snakemake = Dict()
+        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_8cts/configs/config.yaml', encoding='utf8') as f:
+            snakemake.config = yaml.safe_load(f)
+        #overwrite some options
+        sector_opts="Co2L-3h"
+        snakemake.input = Dict()
+        snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
+        snakemake.output = Dict(
 
-        snakemake = mock_snakemake(
-            "plot_network",
-            sector_opts="Co2L-3h-learnH2xElectrolysisp0-seqcost-notimedelay",
-            clusters="37",
-        )
+        map="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-costs-all.pdf".format(sector_opts),
+        supply="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-supply.pdf".format(sector_opts),)
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
 
     n = pypsa.Network(snakemake.input.network,
                       override_component_attrs=override_component_attrs)

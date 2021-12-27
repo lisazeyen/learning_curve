@@ -989,7 +989,8 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
 
         define_constraints(n, lhs, "==", 0, "Carrier", "xs_shift_xs_relation")
         # -------------------------------------------------------
-        x_max = n.carriers.loc[learn_i, "max_capacity"].max()
+        x_max = (expand_series(n.carriers.loc[learn_i, "max_capacity"], investments[1:]).T
+                 .reindex(columns=learning_shift.columns, level=0))
         lhs = linexpr((1, x_diff.iloc[1:]),(-x_max, learning_shift))
 
         define_constraints(n, lhs, "<=", 0, "Carrier", "x_diff_ub")
@@ -997,9 +998,9 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
         # TODO
         # slope is defined for each line segment
         # x_diff is defined for each interpolation point
-        slope_diff = (expand_series(slope.stack(), investments).swaplevel()
-                     .T.sort_index(axis=1)
-                     .reindex_like(x_diff).fillna(method="ffill", axis=1))
+        slope_diff = (expand_series(slope.unstack(), investments).T
+                      .reindex_like(x_diff).groupby(level=0, axis=1).shift()
+                      .fillna(method="bfill", axis=1))
 
         # define cumulative cost TC(t)
         lhs = linexpr((-1, cum_cost))
@@ -1010,9 +1011,7 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
                 .reindex(lhs.columns, axis=1))
         # cumulative cost at previous investment period TC(t-1)
         lhs.iloc[1:] += (
-            linexpr((points_y_fit.reindex_like(learning_shift), learning_shift))
-            .groupby(level=0, axis=1)
-            .sum(**agg_group_kwargs)
+            linexpr((1, cum_cost.shift().dropna()))
             .reindex(lhs.columns, axis=1)
         )
 

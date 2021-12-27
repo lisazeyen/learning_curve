@@ -1355,7 +1355,6 @@ def assign_solution(
                     ext_i = get_extendable_i(n, comp)
                     if "carrier" not in n.df(comp) or n.df(comp).empty:
                         continue
-                    learn_assets = n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
                     learn_assets = ext_i.intersection(
                         n.df(comp)[n.df(comp)["carrier"].isin(learn_i)].index
                     )
@@ -1372,8 +1371,10 @@ def assign_solution(
                         )
                     )
                     if comp=="Generator" and "nolearning_cost" in n.df(comp).columns:
-                        logger.info("Add back connection costs which do not underly learning.\n")
                         offwind_i = n.df(comp)[n.df(comp).p_nom_extendable & (~n.df(comp).nolearning_cost.isna())].index
+                        offwind_i = offwind_i.intersection(learn_assets)
+                        logger.info("Add back connection costs which do not "
+                                    "underly learning for carriers {}.\n".format(n.df(comp).loc[offwind_i,"carrier"].unique()))
                         n.df(comp).loc[offwind_i, "capital_cost"] += n.df(comp).loc[offwind_i, "nolearning_cost"]
         else:
             # case that variables are static

@@ -819,12 +819,29 @@ if __name__ == "__main__":
     n.stores.loc[to_adjust_i, "lifetime"] =  time_weightings
 
     # add hydrogen boilers
-    df = n.links[
-        n.links.carrier.str.contains("gas boiler") & (n.links.build_year >= years[0])
-    ].copy()
-    df["bus0"] = df.index.str[:5] + " H2"
-    df.index = df.index.str.replace("gas boiler", "H2 boiler")
-    df["carrier"] = df.carrier.str.replace("gas boiler", "H2 boiler")
-    import_components_from_dataframe(n, df, "Link")
+    if snakemake.config["h2boiler_retrofit"]:
+        df = n.links[
+            n.links.carrier.str.contains("gas boiler") & (n.links.build_year >= years[0])
+        ].copy()
+        df["bus0"] = df.index.str[:5] + " H2"
+        df["bus2"] = df["bus3"]
+        df["efficiency2"] = df["efficiency3"]
+        df.index = df.index.str.replace("gas boiler", "H2 boiler")
+        df["carrier"] = df.carrier.str.replace("gas boiler", "H2 boiler")
+        import_components_from_dataframe(n, df, "Link")
+
+    # add retrofit OCGT
+    if snakemake.config["OCGT_retrofit"]:
+        logger.info("add OCGTs which can be retrofitted to run with H2")
+        df = n.links[
+            (n.links.carrier =="OCGT") & (n.links.build_year >= years[0])
+        ].copy()
+        df["bus0"] = df.index.str[:5] + " H2"
+        df["bus2"] = df["bus3"]
+        df["efficiency2"] = df["efficiency3"]
+        df.index = df.index.str.replace("OCGT", "OCGT H2")
+        df["carrier"] = df.carrier.str.replace("OCGT", "OCGT H2")
+        import_components_from_dataframe(n, df, "Link")
+
     # export network
     n.export_to_netcdf(snakemake.output[0])

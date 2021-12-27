@@ -32,6 +32,7 @@ from pypsa_learning.learning import (
     experience_curve,
     get_linear_interpolation_points,
     get_slope,
+    cumulative_cost_curve
 )
 
 from distutils.version import LooseVersion
@@ -595,8 +596,10 @@ def set_scenario_opts(n, opts):
                         )
                 # TODO
                 if tech == "H2 electrolysis":
+                    n.carriers.loc[tech, "global_factor"]  = 0.4
                     n.carriers.loc["H2 electrolysis", "max_capacity"] = 3e6 / factor
                 if tech == "H2 Electrolysis":
+                    n.carriers.loc[tech, "global_factor"]  = 0.4
                     n.carriers.loc["H2 Electrolysis", "max_capacity"] = 3e6 / factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
@@ -1024,6 +1027,27 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
     rhs = 0.0
     define_constraints(n, lhs, ">=", rhs, "Link", "retro_gasboiler")
 
+def add_retrofit_OCGT_constraint(n, snapshots):
+    """Allow retrofitting of existing gas boilers to H2 boilers"""
+    logger.info("Add constraint for retrofitting existing OCGT to run with H2.")
+    c, attr = "Link", "p"
+
+    h2_i = n.df(c)[n.df(c).carrier=="OCGT H2"].index
+    gas_boiler_i = n.df(c)[(n.df(c).carrier=="OCGT") & (n.df(c).p_nom_extendable)].index
+
+    # TODO
+    n.df(c).loc[h2_i, "capital_cost"] = 100.0
+
+    h2_p = get_var(n, c, attr)[h2_i]
+    gas_boiler_p = get_var(n, c, attr)[gas_boiler_i]
+
+    gas_boiler_cap = get_var(n, c, "p_nom").loc[gas_boiler_i]
+    gas_boiler_cap_t = expand_series(gas_boiler_cap, snapshots).T
+
+    lhs = linexpr((-1, h2_p), (1, gas_boiler_cap_t.values), (-1, gas_boiler_p.values))
+    rhs = 0.0
+    define_constraints(n, lhs, ">=", rhs, "Link", "retrofit_OCGT")
+
 
 # --------------------------------------------------------------------
 def prepare_network(n, solve_opts=None):
@@ -1053,6 +1077,8 @@ def prepare_network(n, solve_opts=None):
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
                 add_retrofit_gas_boilers_constraint(n, snapshots)
+            if snakemake.config["OCGT_retrofit"]:
+                add_retrofit_OCGT_constraint(n, snapshots)
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = True
@@ -1066,6 +1092,8 @@ def prepare_network(n, solve_opts=None):
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
                 add_retrofit_gas_boilers_constraint(n, snapshots)
+            if snakemake.config["OCGT_retrofit"]:
+                add_retrofit_OCGT_constraint(n, snapshots)
             # add_capacity_constraint(n, snapshots)
 
         skip_objective = False
@@ -1234,16 +1262,30 @@ def seqlopf(
             .add(initial_cum_cap, axis=0)
         )
 
+        cum_p_nom[0] = initial_cum_cap
+        cum_p_nom.sort_index(axis=1, inplace=True)
+        cumulative_cost = pd.DataFrame().reindex_like(cum_p_nom)
+        # cost paid per MW installed capacity
+        for carrier in learn_carriers:
+            cumulative_cost.loc[carrier] = cum_p_nom.loc[carrier].apply(lambda x:
+                                              cumulative_cost_curve(x,
+                                                                    learning_rate.loc[carrier],
+                                                                    c0.loc[carrier],
+                                                                    initial_cum_cap.loc[carrier]))
+        cost = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)))
+        cost[0] = c0
+        cost = cost.fillna(method="ffill", axis=1)
+
         # (a) investment costs by piecewise linearisation
         x_high = n.carriers.loc[learn_carriers, "max_capacity"]
         segments = snakemake.config["segments"]
         points = get_linear_interpolation_points(n, initial_cum_cap, x_high, segments)
         slope = get_slope(points)
-
-        cost = pd.DataFrame(columns=learn_carriers)
+        # costs for new build capacity in investment period
+        cost_new = pd.DataFrame(columns=learn_carriers)
         for carrier in learn_carriers:
             x_fit = points.xs("x_fit", level=1, axis=1)[carrier]
-            cost[carrier] = (
+            cost_new[carrier] = (
                 cum_p_nom.loc[carrier]
                 .apply(lambda x: np.searchsorted(x_fit, x, side="right") - 1)
                 .map(slope[carrier])
@@ -1262,8 +1304,14 @@ def seqlopf(
             ),
             axis=1,
         )
+        # averaged paid costs
         new_costs = pd.Series(
-            n.df(c).set_index(["carrier", "build_year"]).index.map(cost.T.stack()),
+            n.df(c).set_index(["carrier", "build_year"]).index.map(cost.stack()),
+            index=n.df(c).index,
+        ).fillna(n.df(c).capital_cost)
+        # costs for newly build asset in investment period
+        cost_new = pd.Series(
+            n.df(c).set_index(["carrier", "build_year"]).index.map(cost_new.T.stack()),
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
         # for offshore wind costs without learning
@@ -1379,7 +1427,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnsolarp0-learnDACp0",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0",
             clusters="37",
         )
 
@@ -1425,7 +1473,7 @@ if __name__ == "__main__":
 
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
-        n.carriers.loc["DAC", "global_capacity"] = 1e3
+        n.carriers.loc["DAC", "global_capacity"] = 10
 
     # aggregate network temporal
     if snakemake.config["temporal_presolve"] != "None":
@@ -1522,7 +1570,7 @@ if __name__ == "__main__":
                     for key in n.sols["Carrier"]["pnl"].keys():
                         sol_attr = round(n.sols["Carrier"]["pnl"][key].groupby(level=0).first(), ndigits=2)
                         if not isinstance(sol_attr.columns, pd.MultiIndex):
-                            segments_i = pd.Index(np.arange(snakemake.config["segments"]))
+                            segments_i = pd.Index(np.arange(snakemake.config["segments"]+1))
                             sol_attr = sol_attr.reindex(
                                 pd.MultiIndex.from_product([sol_attr.columns, segments_i]),
                                 level=0,
@@ -1538,7 +1586,7 @@ if __name__ == "__main__":
                 n,
                 min_iterations=4,
                 max_iterations=6,
-                track_iterations=False,
+                track_iterations=True,
                 msq_threshold=0.05,
                 extra_functionality=extra_functionality,
                 time_delay=time_delay,
