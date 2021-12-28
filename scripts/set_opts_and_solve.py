@@ -1272,7 +1272,7 @@ def seqlopf(
                                                                     learning_rate.loc[carrier],
                                                                     c0.loc[carrier],
                                                                     initial_cum_cap.loc[carrier]))
-        cost = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)))
+        cost = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)).replace(0, np.nan))
         cost[0] = c0
         cost = cost.fillna(method="ffill", axis=1)
 
@@ -1427,7 +1427,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0",
+            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-local-seqcost-notimedelay",
             clusters="37",
         )
 
