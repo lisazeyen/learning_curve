@@ -866,9 +866,11 @@ def learning_cost_vs_curve():
             check = cum_cost.rename(index=global_cum_check.to_dict())
             check.name = "cumulative cost"
             investment_cost = ((sols["inv_per_period"] /
-                               sols["cap_per_period"])
-                               .groupby(level=0, axis=1).first()
-                               .fillna(method="ffill"))
+                               round(sols["cap_per_period"]).replace(0, np.nan)
+                               )
+                               .groupby(level=0, axis=1).first())
+            investment_cost.iloc[0].fillna(learn_carrier.loc["initial_cost", scenario], inplace=True)
+            investment_cost.fillna(method="ffill", inplace=True)
             investment_cost.rename(index=lambda x: str(x), inplace=True)
 
         except (OSError, pd.errors.ParserError):

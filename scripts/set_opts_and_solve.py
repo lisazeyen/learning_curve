@@ -136,6 +136,90 @@ aggregate_dict = {
 }
 
 
+def heat_must_run(n):
+    """
+    Force heating technologies to follow heat demand profile.
+    """
+    logger.info("Add must-run condition for heating technologies.\n")
+    cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
+                                   & ~n.loads_t.p_set.columns.str.contains("industry")]
+    profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+
+    techs = ['H2 boiler', 'resistive heater', 'ground heat pump',
+             "air heat pump", "gas CHP", "gas boiler", "biomass CHP",
+             "oil boiler"]
+def cluster_heat_buses(n):
+    """Cluster residential and service heat buses to one representative bus.
+
+    This is done to save memory and speed up optimisation
+    """
+    logger.info("Cluster residential and service heat buses.")
+    assign_location(n)
+
+    components = ["Bus", "Carrier", "Generator", "Link", "Load", "Store"]
+    components_t = {"Bus": "buses_t",
+                    "Carrier": "carriers_t",
+                    "Generator": "generators_t",
+                    "Link": "links_t",
+                    "Load": "loads_t",
+                    "Store":"stores_t"}
+
+    for c in components:
+        df = getattr(n, components_t[c][:-2])
+        cols = df.columns[df.columns.str.contains("bus") | (df.columns=="carrier")]
+        links_i = (df[cols].apply(lambda x: x.str.contains("residential")
+                                  | x.str.contains("services"),
+                                       axis=1)).any(axis=1)
+        if "carrier" in df.columns:
+            logger.info("cluster techs: \n {}\n".format(df.loc[links_i, "carrier"].unique()))
+        df[cols] = (df[cols]
+                         .apply(lambda x: x.str.replace("residential ","")
+                                .str.replace("services ", ""), axis=1))
+        df = df.rename(index=lambda x: x.replace("residential ","")
+                       .replace("services ", ""))
+        keys = df.columns.intersection(aggregate_dict.keys())
+        agg = dict(
+            zip(
+                df.columns.difference(keys),
+                ["first"] * len(df.columns.difference(keys)),
+            )
+        )
+        for key in keys:
+            agg[key] = aggregate_dict[key]
+
+        df = df.groupby(level=0).agg(agg, **agg_group_kwargs)
+
+
+        # time varying data
+
+        pnl = getattr(n, components_t[c])
+        keys = pd.Index(pnl.keys()).intersection(aggregate_dict.keys())
+        agg = dict(
+            zip(
+                pd.Index(pnl.keys()).difference(aggregate_dict.keys()),
+                ["first"]
+                * len(pd.Index(pnl.keys()).difference(aggregate_dict.keys())),
+            )
+        )
+        for key in keys:
+            agg[key] = aggregate_dict[key]
+
+        for k in pnl.keys():
+            pnl[k].rename(columns=lambda x: x.replace("residential ","")
+                           .replace("services ", ""), inplace=True)
+            pnl[k] = (
+                 pnl[k]
+                .groupby(level=0, axis=1)
+                .agg(agg[k], **agg_group_kwargs)
+            )
+
+        to_drop = n.df(c).index.difference(df.index)
+        n.mremove(c, to_drop)
+        to_add = df.index.difference(n.df(c).index)
+        import_components_from_dataframe(n, df.loc[to_add], c)
+
+    return n
+
 def cluster_network(n, years):
     """Cluster network n to network m with one representative node."""
     logger.info("Cluster network spatially to one representative node.")
@@ -228,7 +312,10 @@ def cluster_network(n, years):
     m.mremove("Link", to_drop)
     # TODO
     dac_i = m.links[m.links.carrier == "DAC"].index
-    m.links.loc[dac_i, "bus3"] = "services urban decentral heat"
+    if snakemake.config["cluster_heat_nodes"]:
+        m.links.loc[dac_i, "bus3"] = "urban decentral heat"
+    else:
+        m.links.loc[dac_i, "bus3"] = "services urban decentral heat"
     # drop old global constraints
     m.global_constraints.drop(m.global_constraints.index, inplace=True)
 
@@ -1427,7 +1514,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-local-seqcost-notimedelay",
+            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-local",
             clusters="37",
         )
 
@@ -1443,6 +1530,8 @@ if __name__ == "__main__":
     co2_i = n.stores[n.stores.carrier=="co2 stored"].index
     n.stores.loc[co2_i, "e_nom_max"] = 200e6
 
+    if snakemake.config["cluster_heat_nodes"]:
+        n = cluster_heat_buses(n)
     # cluster network spatially to one node
     if snakemake.config["one_node"]:
         n = cluster_network(n, years)

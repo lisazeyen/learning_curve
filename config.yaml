@@ -1,4 +1,4 @@
-run: "retrofit_OCGT"
+run: "cluster_heat_nodes"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-25sn,Co2L-25sn-learnH2xElectrolysisp0,Co2L-25sn-learnH2xElectrolysisp0-local, Co2L-25sn-learnH2xElectrolysisp0-local-seqcost,Co2L-25sn-learnH2xElectrolysisp0-local-seqcost-notimedelay, Co2L-25sn-learnH2xElectrolysisp10-local, Co2L-25sn-learnDACp0, Co2L-25sn-learnsolarp0, Co2L-25sn-learnsolarp0-local]
+  sector_opts: [Co2L-148sn,Co2L-148sn-learnH2xElectrolysisp0,Co2L-148sn-learnH2xElectrolysisp0-local, Co2L-148sn-learnH2xElectrolysisp0-local-seqcost,Co2L-148sn-learnH2xElectrolysisp0-local-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp10-local, Co2L-148sn-learnDACp0, Co2L-148sn-learnsolarp0, Co2L-148sn-learnsolarp0-local]
   investment_periods: [2020, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -15,6 +15,10 @@ countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'F
 tech_limit: True
 # cluster all nodes to one representative
 one_node: True
+# cluster residential and services heat nodes together
+cluster_heat_nodes: True
+# must run condition for heating learning_technologies
+heat_must_run: True
 # only select certain countries
 select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
