@@ -144,10 +144,27 @@ def heat_must_run(n):
     cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
                                    & ~n.loads_t.p_set.columns.str.contains("industry")]
     profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+    profile.rename(columns=n.loads.bus.to_dict(), inplace=True)
 
-    techs = ['H2 boiler', 'resistive heater', 'ground heat pump',
-             "air heat pump", "gas CHP", "gas boiler", "biomass CHP",
-             "oil boiler"]
+    profile1 = profile.reindex(columns=n.links.bus1)
+    profile1.columns = n.links.index
+    profile1.dropna(axis=1, inplace=True)
+    to_drop = profile1.columns[profile1.columns.str.contains("water tank")]
+    profile1.drop(to_drop, inplace=True, axis=1)
+
+    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile1], axis=1)
+
+    profile2 = profile.reindex(columns=n.links.bus2)
+    profile2.columns = n.links.index
+    profile2.dropna(axis=1, inplace=True)
+    to_drop = profile2.columns[profile2.columns.str.contains("H2 Fuel Cell")]
+    profile2.drop(to_drop, inplace=True, axis=1)
+
+    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile2], axis=1)
+
+    return n
+
+
 def cluster_heat_buses(n):
     """Cluster residential and service heat buses to one representative bus.
 
@@ -1514,7 +1531,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-25sn-learnH2xElectrolysisp0-local",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local",
             clusters="37",
         )
 
@@ -1538,6 +1555,11 @@ if __name__ == "__main__":
     # consider only some countries
     if len(snakemake.config["select_cts"]):
         n = select_cts(n, years)
+    # must run condition for heating technologies
+    if snakemake.config["heat_must_run"]:
+        n = heat_must_run(n)
+
+
     # prepare data
     global_capacity, p_nom_max_limit, global_factor = prepare_data()
     # set scenario options

@@ -1,4 +1,4 @@
-run: "cluster_heat_nodes"
+run: "heat_must_run"
 
 logging:
   level: INFO
