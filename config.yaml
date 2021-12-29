@@ -1,4 +1,4 @@
-run: "split_regions_withretro"
+run: "split_regions_withretro_4segments"
 
 logging:
   level: INFO
@@ -20,7 +20,7 @@ cluster_heat_nodes: True
 # cluster to representative regions
 cluster_regions: True
 # must run condition for heating learning_technologies
-heat_must_run: True
+heat_must_run: False
 # only select certain countries
 select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
@@ -36,7 +36,7 @@ h2boiler_retrofit: True
 # option to retrofit existing OCGT to run with H2
 OCGT_retrofit: True
 # number of linear segments for MIP
-segments: 5
+segments: 4
 # temporal aggregeation for presolve
 temporal_presolve: None # 73sn
 # add time delay for learning, only capacities of the previous investment

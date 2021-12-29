@@ -744,7 +744,7 @@ if __name__ == "__main__":
         with open('/home/lisa/Documents/learning_curve/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
-        sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local-seqcost-notimedelay"
+        sector_opts="Co2L-148sn-learnH2xElectrolysisp0"
         snakemake.input = Dict()
         snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
         snakemake.output = Dict(

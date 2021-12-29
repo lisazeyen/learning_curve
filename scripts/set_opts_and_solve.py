@@ -1594,7 +1594,8 @@ def seqlopf(
                 .fillna(slope[carrier].iloc[-1])
             )
         if time_delay:
-            cost = cost.shift().fillna(c0)
+            cost = cost.shift(axis=1)
+            cost.iloc[:,0] = c0
 
         # (b) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
@@ -1729,7 +1730,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-­local-­seqcost",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local-seqcost",
             clusters="37",
         )
 
