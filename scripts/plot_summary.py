@@ -1098,7 +1098,7 @@ if __name__ == "__main__":
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/sos2_timedelaynew_2/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/retrofit_OCGT/configs/config.yaml', encoding='utf8') as f:
         # with open('/home/lisa/Documents/learning_curve/results/sos2_timedelaynew_2/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config

@@ -1452,6 +1452,9 @@ def assign_solution(
         sign = 1 if "upper" in attr or attr == "marginal_price" else -1
         n.dualvalues.at[(c, attr), "pnl"] = is_pnl
         to_component = c in n.all_components
+        if (constraints.isna()).any().any():
+            logger.warning("there are nan values in dual constraint of {} {}".format(c, attr))
+            constraints = pd.DataFrame(constraints.sum(axis=1))
         if is_pnl:
             n.dualvalues.at[(c, attr), "in_comp"] = to_component
             duals = constraints.applymap(lambda x: sign * constraints_dual.loc[x])

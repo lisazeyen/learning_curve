@@ -121,9 +121,18 @@ os.environ["NUMEXPR_MAX_THREADS"] = str(snakemake.threads)
 # FUNCTIONS ---------------------------------------------------------------
 aggregate_dict = {
     "p_nom": "sum",
+    "s_nom": "sum",
+    "v_nom": "max",
+    "v_mag_pu_max": "min",
+    "v_mag_pu_min": "max",
     "p_nom_max": "sum",
+    "s_nom_max": "sum",
     "p_nom_min": "sum",
-    "p_nom_max": "sum",
+    "s_nom_min": "sum",
+    'v_ang_min': "max",
+    "v_ang_max":"min",
+    "terrain_factor":"mean",
+    "num_parallel": "sum",
     "p_set": "sum",
     "e_initial": "sum",
     "e_nom": "sum",
@@ -133,6 +142,8 @@ aggregate_dict = {
     "state_of_charge_set": "sum",
     "inflow": "sum",
     "p_max_pu": "mean",
+    "x": "mean",
+    "y": "mean"
 }
 
 
@@ -236,6 +247,193 @@ def cluster_heat_buses(n):
         import_components_from_dataframe(n, df.loc[to_add], c)
 
     return n
+
+def cluster_to_regions(n):
+    """Cluster European countries to representative regions."""
+    assign_location(n)
+    cluster_regions = {
+        "North": ["NO", "SE", "FI", "EE", "LV", "LT"],
+        "East": ["GR", "AL", "MK", "ME", "RS", "BG", "RO",
+                 "HR", "HU", "SK", "PL", "CZ", "BA", "SI"],
+        "Central": ["DE", "AT", "CH", "LU", "DK", "NL",
+                    "BE", "LT"],
+        "South": ["FR", "ES", "IT", "PT"],
+        "West": ["GB", "IE"]
+        }
+    ct_to_region = {}
+    for region, country in cluster_regions.items():
+        countries = cluster_regions[region]
+        for ct in countries:
+            ct_to_region[ct] = region
+
+    # assign to region -------------------------------------------------------
+    n.buses["region"] = n.buses.country.map(ct_to_region)
+    n.buses.region.fillna("EU", inplace=True)
+    for c in n.one_port_components:
+        n.df(c)["region"] = n.df(c).bus.map(n.buses.region)
+    for c in n.branch_components:
+        n.df(c)["region"] = n.df(c).bus0.map(n.buses.region)
+        n.df(c)["region1"] = n.df(c).bus1.map(n.buses.region)
+        if hasattr(n.df(c), "bus3"):
+            n.df(c)["region3"] = n.df(c).bus3.map(n.buses.region).fillna("")
+        eu_i = n.df(c)["country"] == "EU"
+        n.df(c).loc[eu_i, "region"] = n.df(c).loc[eu_i, "bus1"].map(n.buses.region)
+
+    # -------------------------------------------------------------------------
+    # clustered network m
+    m = pypsa.Network(override_component_attrs=override_component_attrs)
+    # set snapshots
+    m.set_snapshots(n.snapshots)
+    m.snapshot_weightings = n.snapshot_weightings.copy()
+    m.investment_period_weightings = n.investment_period_weightings.copy()
+
+    # catch all remaining attributes of network
+    for attr in ["name", "srid"]:
+        setattr(m, attr, getattr(n, attr))
+
+    other_comps = sorted(n.all_components - {"Bus", "Carrier"} - {"Line"})
+    # overwrite static component attributes
+    for component in n.iterate_components(["Bus", "Carrier"] + other_comps):
+        df = component.df
+        default = n.components[component.name]["attrs"]["default"]
+        for col in df.columns.intersection(default.index):
+            df[col].fillna(default.loc[col], inplace=True)
+        if hasattr(df, "carrier"):
+            keys = df.columns.intersection(aggregate_dict.keys())
+            agg = dict(
+                zip(
+                    df.columns.difference(keys),
+                    ["first"] * len(df.columns.difference(keys)),
+                )
+            )
+            for key in keys:
+                agg[key] = aggregate_dict[key]
+            if hasattr(df, "region1"):
+                if hasattr(df, "region3"):
+                    df_2 = df[df.carrier.isin(["DAC", "Fischer-Tropsch"])].groupby(["region3", "carrier", "build_year"]).agg(agg, **agg_group_kwargs)
+                else:
+                    df_2 = pd.DataFrame()
+                df = df.groupby(["region1", "carrier", "build_year"]).agg(agg, **agg_group_kwargs)
+                df = pd.concat([df.drop(["DAC", "Fischer-Tropsch"], level=1), df_2])
+                df.index = pd.Index([f"{region} {i}-{int(j)}" for region, i, j in df.index])
+            elif hasattr(df, "build_year"):
+                df = df.groupby(["region", "carrier", "build_year"]).agg(agg, **agg_group_kwargs)
+                df.index = pd.Index([f"{region} {i}-{int(j)}" for region, i, j in df.index])
+            else:
+                df = df.groupby(["region", "carrier"]).agg(agg, **agg_group_kwargs)
+                df.index = pd.Index([f"{region} {i}" for region, i in df.index])
+            # rename buses
+            df.loc[:, df.columns.str.contains("bus")] = df.loc[
+                :, df.columns.str.contains("bus")
+            ].apply(lambda x: x.map(n.buses.region) + " " + x.map(n.buses.carrier))
+        # drop the standard types to avoid them being read in twice
+        if component.name in n.standard_type_components:
+            df = component.df.drop(m.components[component.name]["standard_types"].index)
+
+        import_components_from_dataframe(m, df, component.name)
+
+    # time varying data
+    for component in n.iterate_components():
+        pnl = getattr(m, component.list_name + "_t")
+        df = component.df
+        if not hasattr(df, "region"):
+            continue
+        keys = pd.Index(component.pnl.keys()).intersection(aggregate_dict.keys())
+        agg = dict(
+            zip(
+                pd.Index(component.pnl.keys()).difference(aggregate_dict.keys()),
+                ["first"]
+                * len(pd.Index(component.pnl.keys()).difference(aggregate_dict.keys())),
+            )
+        )
+        for key in keys:
+            agg[key] = aggregate_dict[key]
+
+        for k in component.pnl.keys():
+            if hasattr(df, "region1"):
+                pnl[k] = (
+                    component.pnl[k]
+                    .groupby([df.region1, df.carrier, df.build_year], axis=1)
+                    .agg(agg[k], **agg_group_kwargs)
+                )
+
+                pnl[k].columns = pd.Index([f"{region} {i}-{int(j)}" for region, i, j in pnl[k].columns])
+            elif hasattr(df, "build_year"):
+                pnl[k] = (
+                    component.pnl[k]
+                    .groupby([df.region, df.carrier, df.build_year], axis=1)
+                    .agg(agg[k], **agg_group_kwargs)
+                )
+                pnl[k].columns = pd.Index([f"{region} {i}-{int(j)}" for region, i, j in pnl[k].columns])
+            else:
+                pnl[k] = (
+                    component.pnl[k]
+                    .groupby([df.region, df.carrier], axis=1)
+                    .agg(agg[k], **agg_group_kwargs)
+                )
+                pnl[k].columns = pd.Index([f"{region} {i}" for region, i in pnl[k].columns])
+            pnl[k].fillna(
+                n.components[component.name]["attrs"].loc[k, "default"], inplace=True
+            )
+
+    # drop not needed components --------------------------------------------
+    to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
+    to_drop = m.links[m.links.carrier.isin(to_drop)].index
+    m.mremove("Link", to_drop)
+    # TODO
+    # dac_i = m.links[m.links.carrier == "DAC"].index
+    # if snakemake.config["cluster_heat_nodes"]:
+    #     m.links.loc[dac_i, "bus3"] = "urban decentral heat"
+    # else:
+    #     m.links.loc[dac_i, "bus3"] = "services urban decentral heat"
+    # drop old global constraints
+    m.global_constraints.drop(m.global_constraints.index, inplace=True)
+
+    # add AC lines
+    for component in n.iterate_components(["Line", "Link"]):
+        df = component.df
+        if component.name=="Link":
+            df = df[df.carrier=="DC"]
+        # drop grid in region
+        df = df[df.region1!=df.region]
+        # order to avoid multiple lines between regions
+        positive_order = df.region < df.region1
+        df_p = df[positive_order]
+        swap_regions = {"region": "region1", "region1": "region",
+                        "bus0": "bus1", "bus1": "bus0"}
+        df_n = df[~positive_order].rename(columns=swap_regions)
+        df = pd.concat([df_p, df_n])
+
+        default = n.components[component.name]["attrs"]["default"]
+        for col in df.columns.intersection(default.index):
+            df[col].fillna(default.loc[col], inplace=True)
+
+        keys = df.columns.intersection(aggregate_dict.keys())
+        agg = dict(
+            zip(
+                df.columns.difference(keys),
+                ["first"] * len(df.columns.difference(keys)),
+            )
+        )
+        for key in keys:
+            agg[key] = aggregate_dict[key]
+
+        df = df.groupby(["region", "region1"]).agg(agg, **agg_group_kwargs)
+        df.index = pd.Index([f"{region}-{i}" for region, i in df.index])
+        # rename buses
+        df.loc[:, df.columns.str.contains("bus")] = df.loc[
+            :, df.columns.str.contains("bus")
+        ].apply(lambda x: x.map(n.buses.region) + " " + x.map(n.buses.carrier))
+        # drop the standard types to avoid them being read in twice
+        if component.name in n.standard_type_components:
+            df = component.df.drop(m.components[component.name]["standard_types"].index)
+
+        import_components_from_dataframe(m, df, component.name)
+
+
+    return m
+    # ---------------------------------------------------------------------
+
 
 def cluster_network(n, years):
     """Cluster network n to network m with one representative node."""
@@ -1531,7 +1729,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local",
+            sector_opts="Co2L-148sn-learnH2xElectrolysis-local",
             clusters="37",
         )
 
@@ -1555,6 +1753,8 @@ if __name__ == "__main__":
     # consider only some countries
     if len(snakemake.config["select_cts"]):
         n = select_cts(n, years)
+    if snakemake.config["cluster_regions"]:
+        n = cluster_to_regions(n)
     # must run condition for heating technologies
     if snakemake.config["heat_must_run"]:
         n = heat_must_run(n)

@@ -1,4 +1,4 @@
-run: "heat_must_run"
+run: "split_regions"
 
 logging:
   level: INFO
@@ -14,9 +14,11 @@ countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'F
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
-one_node: True
+one_node: False
 # cluster residential and services heat nodes together
 cluster_heat_nodes: True
+# cluster to representative regions
+cluster_regions: True
 # must run condition for heating learning_technologies
 heat_must_run: True
 # only select certain countries
@@ -260,6 +262,7 @@ plotting:
     "DC" : "#8a1caf"
     "DC link" : "#8a1caf"
     "CC" : "k"
+    "CCS" : "k"
     "gas boiler" : "#FF922B"
     "SMR" : "#387181"
     "SMR CC" : "#97c5d2"
@@ -290,6 +293,12 @@ plotting:
     "biogas to gas" : "#800000"
     "low voltage": "#c6c6c6"
     "heat": "#ff8585"
+    "heat demand": '#cc1f1f'
+    "power-to-heat": '#2fb537'
+    "power-to-gas": '#c44ce6'
+    "power-to-H2": '#ff29d9'
+    "power-to-liquid": '#25c49a'
+    "gas-to-power/heat": '#ee8340'
 
   nice_names:
     OCGT: "Open-Cycle Gas"

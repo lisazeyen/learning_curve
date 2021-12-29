@@ -210,7 +210,15 @@ def plot_map(network, components=["Link", "Store", "StorageUnit", "Generator"],
             print("Warning!",item,"not in config/plotting/tech_colors")
 
     # hack because impossible to drop buses...
-    n.buses.loc["EU gas", ["x", "y"]] = n.buses.loc["DE0 0", ["x", "y"]]
+    if "DE0 0" in n.buses.index:
+        n.buses.loc["EU gas", ["x", "y"]] = n.buses.loc["DE0 0", ["x", "y"]]
+    if "Central AC" in n.buses.index:
+        n.buses.loc["EU gas", ["x", "y"]] = n.buses.loc["Central AC", ["x", "y"]]
+        n.lines.bus0 = n.lines.bus0.str.replace(" AC", "")
+        n.lines.bus1 = n.lines.bus1.str.replace(" AC", "")
+        n.links.bus1 = n.links.bus1.str.replace(" AC", "")
+        n.links.bus0 = n.links.bus0.str.replace(" AC", "")
+        n.buses.rename(index=lambda x: x.replace(" AC", ""), inplace=True)
 
     n.links.drop(n.links.index[(n.links.carrier != "DC") & (
         n.links.carrier != "B2B")], inplace=True)
@@ -338,6 +346,8 @@ def plot_h2_map(network):
 
     # make a fake MultiIndex so that area is correct for legend
     bus_sizes.rename(index=lambda x: x.replace(" H2", ""), level=0, inplace=True)
+    bus_sizes.rename(index=lambda x: x.replace(" AC", ""), level=0, inplace=True)
+    n.buses.rename(index=lambda x: x.replace(" AC", ""), level=0, inplace=True)
 
     n.links.drop(n.links.index[~n.links.carrier.str.contains("H2 pipeline")], inplace=True)
 
@@ -725,22 +735,23 @@ def plot_series(network, carrier="AC", name="test"):
 if __name__ == "__main__":
     if 'snakemake' not in globals():
         import os
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/lowerH2global_cap_8cts/configs/config.yaml', encoding='utf8') as f:
+        # "results/split_regions/configs/"
+        with open('/home/lisa/Documents/learning_curve/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
-        sector_opts="Co2L-3h"
+        sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local-seqcost-notimedelay"
         snakemake.input = Dict()
         snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
         snakemake.output = Dict(
 
         map="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-costs-all.pdf".format(sector_opts),
         supply="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-supply.pdf".format(sector_opts),)
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        os.chdir("/home/lisa/Documents/learning_curve/")
 
     n = pypsa.Network(snakemake.input.network,
                       override_component_attrs=override_component_attrs)

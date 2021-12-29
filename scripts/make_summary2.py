@@ -1115,13 +1115,13 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        # with open('/home/lisa/mnt/lisa/learning_curve/results/sos2_timedelaynew_2/configs/config.yaml', encoding='utf8') as f:
-        with open("/home/lisa/Documents/learning_curve/results/cluster_heat_nodes/configs/config.yaml", encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/retrofit_OCGT/configs/config.yaml', encoding='utf8') as f:
+        # with open("/home/lisa/Documents/learning_curve/results/cluster_heat_nodes/configs/config.yaml", encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         snakemake.input = Dict()
@@ -1131,8 +1131,8 @@ if __name__ == "__main__":
             snakemake.output[item] =  'results/{name}/csvs/{item}.csv'.format(name=snakemake.config['run'],item=item)
 
 
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-        os.chdir("/home/lisa/Documents/learning_curve/")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        # os.chdir("/home/lisa/Documents/learning_curve/")
 
     networks_dict = {
         (clusters, lv, sector_opt): "results/"
