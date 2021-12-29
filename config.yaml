@@ -1,4 +1,4 @@
-run: "split_regions"
+run: "split_regions_withretro"
 
 logging:
   level: INFO

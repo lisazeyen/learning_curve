@@ -1729,7 +1729,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysis-local",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-­local-­seqcost",
             clusters="37",
         )
 

@@ -998,9 +998,11 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
         # TODO
         # slope is defined for each line segment
         # x_diff is defined for each interpolation point
+        initial_cost = expand_series(n.carriers.loc[slope.columns, "initial_cost"].reindex(x_diff.columns, level=0), investments).T
         slope_diff = (expand_series(slope.unstack(), investments).T
                       .reindex_like(x_diff).groupby(level=0, axis=1).shift()
-                      .fillna(method="bfill", axis=1))
+                      .fillna(initial_cost, axis=1))
+                      #.fillna(method="bfill", axis=1))
 
         # define cumulative cost TC(t)
         lhs = linexpr((-1, cum_cost))
