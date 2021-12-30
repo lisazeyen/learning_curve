@@ -1370,7 +1370,7 @@ def assign_solution(
                             axis=1,
                         )
                     )
-                    if comp=="Generator" and "nolearning_cost" in n.df(comp).columns:
+                    if "nolearning_cost" in n.df(comp).columns:
                         offwind_i = n.df(comp)[n.df(comp).p_nom_extendable & (~n.df(comp).nolearning_cost.isna())].index
                         offwind_i = offwind_i.intersection(learn_assets)
                         logger.info("Add back connection costs which do not "

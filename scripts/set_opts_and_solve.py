@@ -141,7 +141,8 @@ aggregate_dict = {
     "state_of_charge_initial": "sum",
     "state_of_charge_set": "sum",
     "inflow": "sum",
-    "p_max_pu": "mean",
+    # TODO
+    "p_max_pu": "first",
     "x": "mean",
     "y": "mean"
 }
@@ -1286,8 +1287,29 @@ def add_local_res_constraint(n, snapshots):
 
 def add_capacity_constraint(n, snapshots):
     """Additional constraint for overall installed capacity to speed up optimisation."""
-    c, attr = "Generator", "p_nom"
-    res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
+    logger.info("add constraint for minimum installed capacity to speed up optimisation")
+
+    # c, attr = "Generator", "p_nom"
+    # res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
+    # ext_i = n.df(c)[
+    #     (n.df(c)["carrier"].isin(res)) & (n.df(c)["p_nom_extendable"])
+    # ].index
+
+    # cap_vars = get_var(n, c, attr)[ext_i]
+
+    # lhs = (
+    #     linexpr((1, cap_vars))
+    #     .groupby(n.df(c).carrier)
+    #     .sum(**agg_group_kwargs)
+    #     .reindex(index=res)
+    # )
+
+    # rhs = pd.Series([140e3, 200e3, 900e3, 700e3, 400e3], index=res)
+
+    # define_constraints(n, lhs, ">=", rhs, "GlobalConstraint", "min_cap")
+
+    c, attr = "Link", "p_nom"
+    res = ["H2 Electrolysis"]
     ext_i = n.df(c)[
         (n.df(c)["carrier"].isin(res)) & (n.df(c)["p_nom_extendable"])
     ].index
@@ -1301,7 +1323,7 @@ def add_capacity_constraint(n, snapshots):
         .reindex(index=res)
     )
 
-    rhs = pd.Series([140e3, 200e3, 900e3, 700e3, 400e3], index=res)
+    rhs = pd.Series([1e3], index=res)
 
     define_constraints(n, lhs, ">=", rhs, "GlobalConstraint", "min_cap")
 
@@ -1381,7 +1403,8 @@ def prepare_network(n, solve_opts=None):
                 add_retrofit_gas_boilers_constraint(n, snapshots)
             if snakemake.config["OCGT_retrofit"]:
                 add_retrofit_OCGT_constraint(n, snapshots)
-            # add_capacity_constraint(n, snapshots)
+            if snakemake.config["capacity_constraint"]:
+                add_capacity_constraint(n, snapshots)
 
         skip_objective = True
         keep_shadowprices = False
@@ -1396,7 +1419,8 @@ def prepare_network(n, solve_opts=None):
                 add_retrofit_gas_boilers_constraint(n, snapshots)
             if snakemake.config["OCGT_retrofit"]:
                 add_retrofit_OCGT_constraint(n, snapshots)
-            # add_capacity_constraint(n, snapshots)
+            if snakemake.config["capacity_constraint"]:
+                add_capacity_constraint(n, snapshots)
 
         skip_objective = False
         keep_shadowprices = True
@@ -1447,6 +1471,22 @@ def prepare_network(n, solve_opts=None):
                 t.df["marginal_cost"] += 1e-2 + 2e-3 * (
                     np.random.random(len(t.df)) - 0.5
                 )
+                if "carrier" in t.df and not t.df.empty and t.name!="Load":
+                    learn_i = n.carriers[n.carriers.learning_rate != 0].index
+                    ext_i = get_extendable_i(n, t.name)
+                    learn_assets = t.df[t.df["carrier"].isin(learn_i)].index
+                    learn_assets = ext_i.intersection(
+                        t.df[t.df["carrier"].isin(learn_i)].index
+                    )
+                    if learn_assets.empty:
+                        continue
+                    nolearn_noise = 1 + 2 * (
+                        np.random.random(len(t.df.loc[learn_assets])) - 0.5
+                    )
+                    if "nolearning_cost" not in t.df.columns:
+                        t.df["nolearning_cost"] = np.NaN
+                    t.df.loc[learn_assets, "nolearning_cost"] = n.links.loc[learn_assets, "nolearning_cost"].fillna(0) + nolearn_noise
+
 
         for t in n.iterate_components(["Line", "Link"]):
             np.random.seed(123)
@@ -1720,6 +1760,34 @@ def seqlopf(
         iteration += 1
 
 
+def remove_techs_for_speed(n):
+    """remove certain technologies to speed up optimisation."""
+    # remove completly
+    remove = ["home battery", "home battery charger", "home battery discharger",
+              "helmeth", 'rural water tanks charger',
+              'rural water tanks discharger', 'rural water tanks']
+    for c in ["Generator", "Store", "Link", "Line", "Bus"]:
+        if "carrier" not in n.df(c).columns: continue
+        assets_i = n.df(c)[n.df(c).carrier.isin(remove)].index
+        if assets_i.empty: continue
+        logger.info("removing {} of tech {}".format(c, assets_i))
+        n.mremove(c, assets_i)
+
+    # remove in the first investment periods
+    remove = ["SMR CC", 'urban central solar thermal',
+              'urban decentral solar thermal', 'rural solar thermal',
+              'urban central solid biomass CHP CC',
+              'urban central gas CHP CC', 'solid biomass for industry CC']
+    first_years = n.snapshots.levels[0][:-2]
+    for c in ["Generator", "Store", "Link", "Line"]:
+        if "carrier" not in n.df(c).columns: continue
+        assets_i = n.df(c)[(n.df(c).carrier.isin(remove)) &
+                           (n.df(c).build_year.isin(first_years))].index
+        if assets_i.empty: continue
+        logger.info("removing {} of tech {}".format(c, assets_i))
+        n.mremove(c, assets_i)
+
+
 #%%
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -1730,7 +1798,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local-seqcost",
+            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local",
             clusters="37",
         )
 
@@ -1801,6 +1869,8 @@ if __name__ == "__main__":
     )
     # for solving the solution variables
     sols = pd.DataFrame()
+
+    remove_techs_for_speed(n)
     #%%
     with memory_logger(
         filename=getattr(snakemake.log, "memory", None), interval=30.0

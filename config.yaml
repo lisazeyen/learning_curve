@@ -1,4 +1,4 @@
-run: "split_regions_withretro_4segments"
+run: "testing_speed"
 
 logging:
   level: INFO
@@ -7,8 +7,8 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn,Co2L-148sn-learnH2xElectrolysisp0,Co2L-148sn-learnH2xElectrolysisp0-local, Co2L-148sn-learnH2xElectrolysisp0-local-seqcost,Co2L-148sn-learnH2xElectrolysisp0-local-seqcost-notimedelay, Co2L-148sn-learnH2xElectrolysisp10-local, Co2L-148sn-learnDACp0, Co2L-148sn-learnsolarp0, Co2L-148sn-learnsolarp0-local]
-  investment_periods: [2020, 2030, 2040, 2050]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-local,Co2L-148sn-learnH2xElectrolysismp10-local, Co2L-148sn-learnH2xElectrolysisp10-local]
+  investment_periods: [2020, 2025, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
@@ -20,7 +20,7 @@ cluster_heat_nodes: True
 # cluster to representative regions
 cluster_regions: True
 # must run condition for heating learning_technologies
-heat_must_run: False
+heat_must_run: True
 # only select certain countries
 select_cts: [] # ["DE", "FR", "GB", "ES"] # ["DE", "FR", "GB", "ES", "DK", "IT", "NO", "CH"]
 # upper limit for new capacities of learning technologies
@@ -32,16 +32,18 @@ limit_growth_lb: False
 # data set depending on their build year
 seqcost_update: False  # not working for offwind
 # option to retrofit existing methane boilers to H2 boilers
-h2boiler_retrofit: True
+h2boiler_retrofit: False
 # option to retrofit existing OCGT to run with H2
-OCGT_retrofit: True
+OCGT_retrofit: False
 # number of linear segments for MIP
-segments: 4
+segments: 5
 # temporal aggregeation for presolve
 temporal_presolve: None # 73sn
 # add time delay for learning, only capacities of the previous investment
 # periods are considered for cost reduction
 time_delay: True
+# constraint capacity to speed up optimisation
+capacity_constraint: True
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc
@@ -169,12 +171,14 @@ solving:
     # NoRelHeurTime: 300
     # NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
-    # MIPFocus: 3
-    # - Cuts: 3
+    MIPFocus: 1
+    Cuts: 3
+    TimeLimit: 350   # in seconds
     #ScaleFlag: 0
     # - Heuristics: 0
     # - VarBranch: 3   # Mattson p.36 strong branching improved performance
     GURO_PAR_BARDENSETHRESH: 200
+
 
 plotting:
   map:

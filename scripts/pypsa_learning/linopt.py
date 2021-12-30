@@ -861,32 +861,32 @@ def run_and_read_gurobi(
 
     if warmstart:
         m.read(warmstart)
-    if hasattr(n, "start_fn"):
-        logger.info("Add MIP start")
-        logger.info("-----------------------------------------")
+    # if hasattr(n, "start_fn"):
+    #     logger.info("Add MIP start")
+    #     logger.info("-----------------------------------------")
 
-        map_dict = {
-            str(n.mapping["Carrier"]["pnl"]["learning"].loc[row, col]): str(
-                n.vars["Carrier"]["pnl"]["learning"].loc[row, col]
-            )
-            for row in n.vars["Carrier"]["pnl"]["learning"].index
-            for col in n.vars["Carrier"]["pnl"]["learning"].columns
-        }
-        oldfile = n.start_fn
-        with open("test.hnt", "w") as outfile, open(
-            oldfile, "r", encoding="utf-8"
-        ) as infile:
-            for line in infile:
-                if line.startswith("x"):
-                    var_name_old = (line.strip("x")).split(" ")[0]
-                    if not var_name_old in map_dict.keys():
-                        continue
-                    line = line.replace(var_name_old, map_dict[var_name_old])
-                    # for hnt files
-                    line = line.replace("\n", " 1\n")
-                outfile.write(line)
+    #     map_dict = {
+    #         str(n.mapping["Carrier"]["pnl"]["learning"].loc[row, col]): str(
+    #             n.vars["Carrier"]["pnl"]["learning"].loc[row, col]
+    #         )
+    #         for row in n.vars["Carrier"]["pnl"]["learning"].index
+    #         for col in n.vars["Carrier"]["pnl"]["learning"].columns
+    #     }
+    #     oldfile = n.start_fn
+    #     with open("test.hnt", "w") as outfile, open(
+    #         oldfile, "r", encoding="utf-8"
+    #     ) as infile:
+    #         for line in infile:
+    #             if line.startswith("x"):
+    #                 var_name_old = (line.strip("x")).split(" ")[0]
+    #                 if not var_name_old in map_dict.keys():
+    #                     continue
+    #                 line = line.replace(var_name_old, map_dict[var_name_old])
+    #                 # for hnt files
+    #                 line = line.replace("\n", " 1\n")
+    #             outfile.write(line)
 
-        m.read("test.hnt")
+    #     m.read("test.hnt")
     # # MIP warm start ---------------------------
     # m.NumStart = 1
     # # iterate over all MIP starts
@@ -907,19 +907,19 @@ def run_and_read_gurobi(
     logging.disable(1)
 
     # Variable hint for MIP
-    n.hint_fn = solution_fn.replace(".sol", ".hnt")
-    try:
-        m.write(n.hint_fn)
-    except gurobipy.GurobiError:
-        logger.info("No variable hint stored")
-        del n.hint_fn
-    # MIP start
-    n.start_fn = solution_fn.replace(".sol", ".mst")
-    try:
-        m.write(n.start_fn)
-    except gurobipy.GurobiError:
-        logger.info("No MIP start stored")
-        del n.start_fn
+    # n.hint_fn = solution_fn.replace(".sol", ".hnt")
+    # try:
+    #     m.write(n.hint_fn)
+    # except gurobipy.GurobiError:
+    #     logger.info("No variable hint stored")
+    #     del n.hint_fn
+    # # MIP start
+    # n.start_fn = solution_fn.replace(".sol", ".mst")
+    # try:
+    #     m.write(n.start_fn)
+    # except gurobipy.GurobiError:
+    #     logger.info("No MIP start stored")
+    #     del n.start_fn
 
     if store_basis:
         n.basis_fn = solution_fn.replace(".sol", ".bas")
@@ -947,9 +947,13 @@ def run_and_read_gurobi(
     else:
         status = "warning"
 
-    if termination_condition not in ["optimal", "suboptimal"]:
+    if termination_condition not in ["optimal", "suboptimal", "time_limit"]:
         return status, termination_condition, None, None, None
-    variables_sol = pd.Series({v.VarName: v.x for v in m.getVars()}).pipe(set_int_index)
+    try:
+        variables_sol = pd.Series({v.VarName: v.x for v in m.getVars()}).pipe(set_int_index)
+    except AttributeError:
+        logger.warning("TimeLimit reached without finding feasible soultion")
+        return status, termination_condition, None, None, None
     try:
         constraints_dual = pd.Series({c.ConstrName: c.Pi for c in m.getConstrs()}).pipe(
             set_int_index
