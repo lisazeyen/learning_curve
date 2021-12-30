@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-local,Co2L-148sn-learnH2xElectrolysismp10-local, Co2L-148sn-learnH2xElectrolysisp10-local]
+  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-local,Co2L-148sn-learnH2xElectrolysismp10-local]
   investment_periods: [2020, 2025, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']

@@ -23,6 +23,11 @@ rule plot_all_networks:
         expand("results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}-costs-all.pdf",
                **config['scenario'])
 
+rule plot_all_memories:
+    input:
+        expand("results/" + config['run'] +"/graphs/memory_elec_s_EU_{sector_opts}.pdf",
+               **config['scenario'])
+
 rule prepare_perfect_foresight:
     input:
         network=expand("results/prenetworks/" + "elec_s_37_lv1.0__Co2L0-1H-T-H-B-I-solar+p3-dist1_{investment_periods}.nc", **config['scenario']),
@@ -153,3 +158,12 @@ rule plot_network:
     resources: mem_mb=10000
     benchmark: "results/" + config['run'] +"/maps/elec_s_EU_{sector_opts}"
     script: "scripts/plot_network.py"
+
+rule plot_memory:
+    input:
+        log="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory.log",
+    output:
+        memory_plot="results/" + config['run'] +"/graphs/memory_elec_s_EU_{sector_opts}.pdf"
+    threads: 2
+    resources: mem_mb=2000
+    script: "scripts/plot_memory.py"
