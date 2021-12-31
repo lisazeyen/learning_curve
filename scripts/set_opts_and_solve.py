@@ -164,7 +164,7 @@ def heat_must_run(n):
     to_drop = profile1.columns[profile1.columns.str.contains("water tank")]
     profile1.drop(to_drop, inplace=True, axis=1)
 
-    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile1], axis=1)
+    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile1], axis=1).groupby(level=0, axis=1).min()
 
     profile2 = profile.reindex(columns=n.links.bus2)
     profile2.columns = n.links.index
@@ -172,7 +172,12 @@ def heat_must_run(n):
     to_drop = profile2.columns[profile2.columns.str.contains("H2 Fuel Cell")]
     profile2.drop(to_drop, inplace=True, axis=1)
 
-    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile2], axis=1)
+    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile2], axis=1).groupby(level=0, axis=1).min()
+
+    profile3 = profile.reindex(columns=n.generators.bus)
+    profile3.columns = n.generators.index
+    profile3.dropna(axis=1, inplace=True)
+    n.generators_t.p_max_pu = pd.concat([n.generators_t.p_max_pu, profile3], axis=1).groupby(level=0, axis=1).min()
 
     return n
 
@@ -1778,7 +1783,7 @@ def remove_techs_for_speed(n):
               'urban decentral solar thermal', 'rural solar thermal',
               'urban central solid biomass CHP CC',
               'urban central gas CHP CC', 'solid biomass for industry CC']
-    first_years = n.snapshots.levels[0][:-2]
+    first_years = n.snapshots.levels[0][n.snapshots.levels[0]<2040]
     for c in ["Generator", "Store", "Link", "Line"]:
         if "carrier" not in n.df(c).columns: continue
         assets_i = n.df(c)[(n.df(c).carrier.isin(remove)) &
