@@ -13,6 +13,7 @@ if __name__ == "__main__":
         import os
 
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from _helpers import mock_snakemake
 
         snakemake = mock_snakemake(
@@ -27,13 +28,13 @@ with open(snakemake.input.log) as f:
 
 memory = [float(line.split(" ")[1]) for line in f]
 time = [float(line.split(" ")[2][:-1]) for line in f]
-time = [x- time[0] for x in time]
+time = [(x- time[0])/(60*60) for x in time]
 
 mem_series = pd.Series(memory, index=time)
 
 ax = (mem_series/1e3).plot(grid=True, title="Memory usage")
 ax.set_ylabel("memory \n [GB]")
-ax.set_xlabel("time \n [s]")
+ax.set_xlabel("time \n [hours]")
 
 plt.savefig(snakemake.output.memory_plot,
             bbox_inches="tight")

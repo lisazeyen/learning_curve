@@ -730,7 +730,9 @@ def plot_capital_costs_learning():
     cost_learning = capital_cost.droplevel(level=[0,1], axis=1) / 1e3
 
     for tech in learn_i:
-        fig, ax = plt.subplots(len(cost_learning.stack().columns), 1, sharex=True)
+        cols = len(cost_learning.stack().columns)
+        if cols==1: cols+=1
+        fig, ax = plt.subplots(cols, 1, sharex=True)
         fig.set_size_inches((10, 10))
         fig.suptitle("{} \n Investment  cost without grid connection costs \n".format(tech), fontsize=16)
         for i, scenario in enumerate(cost_learning.stack().columns):
@@ -787,6 +789,7 @@ def plot_capital_costs_learning():
     inv_cost = (cost.droplevel(level=[0,1], axis=1)/1e9)
     for tech in learn_i:
         rows = len(cost_learning.stack().columns)
+        if rows==1: rows+=1
         y_max = (cost.droplevel(level=[0,1], axis=1)/1e9).loc[tech].groupby(level=0).sum().max()
         fig, ax = plt.subplots(rows, 1, sharex=True)
         fig.set_size_inches((10, 10))
@@ -999,8 +1002,9 @@ def plot_capacities():
         .groupby(level=1)
         .sum()
     )
-
-    fig, ax = plt.subplots(len(capacities.stack().columns), 1, sharex=True)
+    rows = len(capacities.stack().columns)
+    if rows==1: rows+=1
+    fig, ax = plt.subplots(rows, 1, sharex=True)
     fig.set_size_inches((10, 10))
 
     for i, scenario in enumerate(capacities.stack().columns):
@@ -1042,8 +1046,9 @@ def plot_capacities():
         snakemake.input.learn_carriers, index_col=0, header=list(range(n_header))
     ).index
     for carrier in learn_carrier:
-
-        fig, ax = plt.subplots(len(capacities.stack().columns), 1, sharex=True)
+        rows = len(capacities.stack().columns)
+        if rows==1: rows+=1
+        fig, ax = plt.subplots(rows, 1, sharex=True)
         fig.suptitle(carrier, fontsize=16)
         fig.set_size_inches((10, 10))
 
@@ -1098,7 +1103,7 @@ if __name__ == "__main__":
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/split_regions_withretro2/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/testing_speed/configs/config.yaml', encoding='utf8') as f:
         # with open('/home/lisa/Documents/learning_curve/results/sos2_timedelaynew_2/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config

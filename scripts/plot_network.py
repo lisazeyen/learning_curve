@@ -742,10 +742,10 @@ if __name__ == "__main__":
         snakemake = Dict()
         # "results/split_regions/configs/"
         # with open('/home/lisa/Documents/learning_curve/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/mnt/lisa/learning_curve/results/split_regions_withretro2/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/testing_speed/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
-        sector_opts="Co2L-3h-learnH2xElectrolysisp0-local-seqcost"
+        sector_opts="Co2L-3h-learnH2xElectrolysisp0-local"
         snakemake.input = Dict()
         snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
         snakemake.output = Dict(
