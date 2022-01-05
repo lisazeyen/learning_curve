@@ -71,6 +71,8 @@ def aggregate_snapshots(n, n_periods=12, hours=24, normed=True, solver="glpk",
 
 
     """
+
+
     # create pandas dataframe with all time-dependent data of the pypsa network
     timeseries_df = prepare_timeseries(n, normed)
 
@@ -94,7 +96,6 @@ def aggregate_snapshots(n, n_periods=12, hours=24, normed=True, solver="glpk",
     #     overwrite_time_dependent(n, timeseries_clustered)
 
 
-
 def prepare_timeseries(n, normed):
     """
     returns time dependent data to determinate typcial timeseries
@@ -107,10 +108,20 @@ def prepare_timeseries(n, normed):
             if not pnl[key].empty:
                 timeseries_df = pd.concat([timeseries_df, pnl[key]], axis=1)
 
-    if normed:
-        timeseries_agg = timeseries_df / timeseries_df.max()
-    else:
-        timeseries_agg = timeseries_df
+        if normed:
+            timeseries_agg = timeseries_df / timeseries_df.max().replace(0,1)
+        else:
+            timeseries_agg = timeseries_df
+
+    # consistency check
+    to_drop = timeseries_agg.columns[timeseries_agg.isna().sum()!=0]
+    if not to_drop.empty:
+        logger.warning("There are nan values which are droped in the following columns: \n {}".format(to_drop))
+        timeseries_agg.drop(to_drop, axis=1, inplace=True)
+    to_drop = timeseries_agg.columns[timeseries_agg.columns.duplicated()]
+    if not to_drop.empty:
+        logger.warning("There are duplicated columns which are dropped : \n {}".format(to_drop))
+        timeseries_agg.drop(to_drop, axis=1, inplace=True)
 
     return timeseries_agg
 
@@ -123,44 +134,61 @@ def aggregate_timeseries(timeseries_df, n_periods, hours, extremePeriodMethod,
     aggregate timeseries with tsam module to a typical number of periods
     (n_periods) with each a lenght of hours
     """
-    aggregation = tsam.TimeSeriesAggregation(
-                            timeseries_df,
-                            noTypicalPeriods=n_periods,
-                            extremePeriodMethod=extremePeriodMethod,
-                            rescaleClusterPeriods=False,
-                            hoursPerPeriod=hours,
-                            clusterMethod=clusterMethod,
-                            solver=solver,
-                            predefClusterOrder=predefClusterOrder,
-                            )
+    def concat_df(df, df_final, year):
+        multi_i =  pd.MultiIndex.from_product([[year], df.index],
+                                              names=['investment_period', 'snapshot'])
+        df_final = pd.concat([df_final, df.set_index(multi_i)])
+        return df_final
+
+    map_snapshots_to_periods_all = pd.DataFrame()
+    new_snapshots_all = pd.DataFrame()
+    clustered_all = pd.DataFrame()
+
+    for year in timeseries_df.index.levels[0]:
+        aggregation = tsam.TimeSeriesAggregation(
+                                timeseries_df.loc[year],
+                                noTypicalPeriods=n_periods,
+                                extremePeriodMethod=extremePeriodMethod,
+                                rescaleClusterPeriods=False,
+                                hoursPerPeriod=hours,
+                                clusterMethod=clusterMethod,
+                                solver=solver,
+                                predefClusterOrder=predefClusterOrder,
+                                )
 
 
-    clustered = aggregation.createTypicalPeriods()
-    if normed:
-        clustered = clustered.mul(timeseries_df.max())
+        clustered = aggregation.createTypicalPeriods()
+        if normed:
+            clustered = clustered.mul(timeseries_df.loc[year].max())
 
-    map_snapshots_to_periods = aggregation.indexMatching()
-    map_snapshots_to_periods["day_of_year"] = map_snapshots_to_periods.index.day_of_year
-    cluster_weights = aggregation.clusterPeriodNoOccur
-    clusterCenterIndices= aggregation.clusterCenterIndices
+        map_snapshots_to_periods = aggregation.indexMatching()
+        map_snapshots_to_periods["day_of_year"] = (map_snapshots_to_periods.index - map_snapshots_to_periods.index[0]).days + 1
+        cluster_weights = aggregation.clusterPeriodNoOccur
+        clusterCenterIndices= aggregation.clusterCenterIndices
 
-    # pandas Day of year starts at 1, clusterCenterIndices at 0
-    new_snapshots = map_snapshots_to_periods[(map_snapshots_to_periods
-                                             .day_of_year-1).isin(clusterCenterIndices)]
-    new_snapshots["weightings"] = new_snapshots["PeriodNum"].map(cluster_weights).astype(float)
-    clustered.set_index(new_snapshots.index, inplace=True)
+        # pandas Day of year starts at 1, clusterCenterIndices at 0
+        new_snapshots = map_snapshots_to_periods[(map_snapshots_to_periods
+                                                 .day_of_year-1).isin(clusterCenterIndices)]
+        new_snapshots["weightings"] = new_snapshots["PeriodNum"].map(cluster_weights).astype(float)
+        clustered.set_index(new_snapshots.index, inplace=True)
 
-    # last hour of typical period
-    last_hour = new_snapshots[new_snapshots["TimeStep"]==hours-1]
-    # first hour
-    first_hour = new_snapshots[new_snapshots["TimeStep"]==0]
+        # last hour of typical period
+        last_hour = new_snapshots[new_snapshots["TimeStep"]==hours-1]
+        # first hour
+        first_hour = new_snapshots[new_snapshots["TimeStep"]==0]
 
-    # add typical period name and last hour to mapping original snapshot-> typical
-    map_snapshots_to_periods["RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(last_hour.set_index(["PeriodNum"])["day_of_year"].to_dict())
-    map_snapshots_to_periods["last_hour_RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(last_hour.reset_index().set_index(["PeriodNum"])["name"].to_dict())
-    map_snapshots_to_periods["first_hour_RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(first_hour.reset_index().set_index(["PeriodNum"])["name"].to_dict())
+        # add typical period name and last hour to mapping original snapshot-> typical
+        map_snapshots_to_periods["RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(last_hour.set_index(["PeriodNum"])["day_of_year"].to_dict())
+        map_snapshots_to_periods["last_hour_RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(last_hour.reset_index().set_index(["PeriodNum"])["snapshot"].to_dict())
+        map_snapshots_to_periods["first_hour_RepresentativeDay"] = map_snapshots_to_periods["PeriodNum"].map(first_hour.reset_index().set_index(["PeriodNum"])["snapshot"].to_dict())
 
-    return map_snapshots_to_periods, new_snapshots, clustered
+        map_snapshots_to_periods_all = concat_df(map_snapshots_to_periods,
+                                                 map_snapshots_to_periods_all,
+                                                 year)
+        new_snapshots_all = concat_df(new_snapshots, new_snapshots_all, year)
+        clustered_all =  concat_df(clustered, clustered_all, year)
+
+    return map_snapshots_to_periods_all, new_snapshots_all, clustered_all
 
 
 def overwrite_time_dependent(n, df_t):
@@ -485,6 +513,3 @@ def temporal_aggregation_storage_constraints(n, snapshots):
     soc_cyclic = soc_cyclic(n, snapshots)
     # l_constraint(n.model, "cyclic_storage_constraint",
     #              soc_cyclic, list(sus[sus.cyclic_state_of_charge].index))
-
-
-
