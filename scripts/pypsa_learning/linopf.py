@@ -1454,6 +1454,8 @@ def assign_solution(
         to_component = c in n.all_components
         if (constraints.isna()).any().any():
             logger.warning("there are nan values in dual constraint of {} {}".format(c, attr))
+            if isinstance(constraints, pd.Series):
+                constraints = pd.DataFrame(constraints)
             constraints = pd.DataFrame(constraints.sum(axis=1))
         if is_pnl:
             n.dualvalues.at[(c, attr), "in_comp"] = to_component
@@ -1477,7 +1479,10 @@ def assign_solution(
     n.dualvalues = pd.DataFrame(index=sp, columns=["in_comp", "pnl"])
     # extract shadow prices attached to components
     for c, attr in sp:
-        map_dual(c, attr)
+        try:
+            map_dual(c, attr)
+        except KeyError:
+            logger.warning("Shadow prices of {} {} could not be saved".format(c, attr))
 
     # correct prices for snapshot weightings
     n.buses_t.marginal_price.loc[sns] = n.buses_t.marginal_price.loc[sns].divide(
