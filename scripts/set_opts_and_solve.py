@@ -1093,6 +1093,18 @@ def set_carbon_constraints(n):
         sense="<=",
         constant=0,
     )
+
+    emissions_1990 = 4.53693
+    logger.info("add carbon target of {} Gt for 2030".format(0.55*emissions_1990))
+    n.add(
+        "GlobalConstraint",
+        "CarbonTarget2030",
+        type="CarbonTarget",
+        carrier_attribute="co2_emissions",
+        sense="<=",
+        investment_period=2030,
+        constant=0.55*emissions_1990*1e9,
+    )
     return n
 
 
@@ -1243,6 +1255,32 @@ def add_carbon_budget_constraint(n, snapshots):
             con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
+
+def add_carbon_target(n, snapshots):
+    glcs = n.global_constraints.query('type == "Co2Target"')
+    if glcs.empty:
+        return
+    for name, glc in glcs.iterrows():
+        rhs = glc.constant
+        carattr = glc.carrier_attribute
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
+        if emissions.empty:
+            continue
+
+        # stores
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
+        if not stores.empty:
+            time_valid = int(glc.loc["investment_period"])
+            final_e = get_var(n, "Store", "e").groupby(level=0).last()[stores.index]
+            first_e = get_var(n, "Store", "e").groupby(level=0).first()[stores.index]
+
+            lhs = linexpr((1, final_e.loc[time_valid]),
+                          (-1, first_e.loc[time_valid]))
+            con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
+
+
 def add_local_res_constraint(n, snapshots):
     c, attr = "Generator", "p_nom"
     res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
@@ -1328,9 +1366,9 @@ def add_capacity_constraint(n, snapshots):
         .reindex(index=res)
     )
 
-    rhs = pd.Series([1e3], index=res)
+    rhs = pd.Series([1e6], index=res)
 
-    define_constraints(n, lhs, ">=", rhs, "GlobalConstraint", "min_cap")
+    define_constraints(n, lhs, ">=", rhs, "Carrier", "min_cap")
 
 
 def add_retrofit_gas_boilers_constraint(n, snapshots):
@@ -1403,6 +1441,7 @@ def prepare_network(n, solve_opts=None):
             )
             add_carbon_neutral_constraint(n, snapshots)
             add_carbon_budget_constraint(n, snapshots)
+            add_carbon_target(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
                 add_retrofit_gas_boilers_constraint(n, snapshots)
@@ -1418,6 +1457,7 @@ def prepare_network(n, solve_opts=None):
         def extra_functionality(n, snapshots):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
+            add_carbon_target(n, snapshots)
             add_carbon_budget_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
@@ -1761,7 +1801,6 @@ def seqlopf(
         update_cost_params(n, prev, time_delay)
         # calculate difference between previous and current result
         diff = msq_diff(n, prev)
-        del n.start_fn
         iteration += 1
 
 
@@ -1803,7 +1842,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-148sn-learnH2xElectrolysisp0-local",
+            sector_opts="Co2L-120sn",
             clusters="37",
         )
 
