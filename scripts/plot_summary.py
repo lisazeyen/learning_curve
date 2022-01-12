@@ -250,6 +250,7 @@ def plot_costs():
         kind="bar",
         ax=ax,
         stacked=True,
+        lw=0,
         color=[snakemake.config["plotting"]["tech_colors"][i] for i in new_index],
     )
 
@@ -279,6 +280,7 @@ def plot_costs():
             df.loc[new_index, scenario].T.plot(
                 kind="bar",
                 ax=ax[i],
+                lw=0,
                 stacked=True,
                 title=str(scenario),
                 legend=False,
@@ -306,7 +308,7 @@ def plot_costs():
 
     # PLOT 3 ##############################################################
     scenarios = len(df.stack().columns)
-    ls = ["-", "--", "-.", ":", "-", "--", "-.", ":"][:scenarios]
+    ls = (5*["-", "--", "-.", ":", "-", "--", "-.", ":"])[:scenarios]
 
     fig, ax = plt.subplots()
     df.sum().unstack().T.plot(
@@ -429,6 +431,7 @@ def plot_balances():
 
         df = df.drop(to_drop)
 
+
         print(df.sum())
 
         if df.empty:
@@ -444,12 +447,6 @@ def plot_balances():
         # df = df[wished]
         new_columns = df.columns.sort_values()
 
-        dict_re = {
-            "Co2L-73sn-co2seq1": "no_learning",
-            "Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-co2seq1": "global learning",
-            "Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp0-learnH2xFuelxCellp0-learnDACp0-learnsolarp0-co2seq1-local": "local_learning",
-            "Co2L-73sn-learnonwindp0-learnbatteryp0-learnbatteryxchargerp0-learnH2xelectrolysisp10-learnH2xFuelxCellp10-learnDACp10-learnsolarp0-co2seq1": "strong_learning",
-        }
         fig, ax = plt.subplots()
         fig.set_size_inches((12, 8))
 
@@ -457,6 +454,7 @@ def plot_balances():
             kind="bar",
             ax=ax,
             stacked=True,
+            lw=0,
             color=[snakemake.config["plotting"]["tech_colors"][i] for i in new_index],
         )
 
@@ -611,7 +609,7 @@ def plot_carbon_budget_distribution():
     plt.rcParams["xtick.labelsize"] = 20
     plt.rcParams["ytick.labelsize"] = 20
     scenarios = len(co2_emissions_grouped.columns)
-    ls = ["-", "--", "-.", ":", "-", "--", "-.", ":"][:scenarios]
+    ls = (5*["-", "--", "-.", ":", "-", "--", "-.", ":"])[:scenarios]
 
     plt.figure(figsize=(10, 7))
 
@@ -637,18 +635,18 @@ def plot_carbon_budget_distribution():
     #     markeredgecolor="black",
     # )
 
-    ax1.plot(
-        [2030],
-        [0.55 * emissions[1990]],
-        marker="*",
-        markersize=12,
-        markerfacecolor="white",
-        markeredgecolor="black",
-    )
+    # ax1.plot(
+    #     [2030],
+    #     [0.55 * emissions[1990]],
+    #     marker="*",
+    #     markersize=12,
+    #     markerfacecolor="white",
+    #     markeredgecolor="black",
+    # )
 
     ax1.plot(
         [2030],
-        [0.6 * emissions[1990]],
+        [0.45 * emissions[1990]],
         marker="*",
         markersize=12,
         markerfacecolor="black",
@@ -697,11 +695,18 @@ def plot_carbon_budget_distribution():
 
 def plot_capital_costs_learning():
     # learning assets
-    cost_learning = pd.read_csv(
-        snakemake.input.capital_costs_learning,
-        index_col=0,
-        header=list(range(n_header)),
-    )
+    try:
+        cost_learning = pd.read_csv(
+            snakemake.input.capital_costs_learning,
+            index_col=0,
+            header=list(range(n_header)),
+        )
+    except IndexError:
+        cost_learning = pd.read_csv(
+            snakemake.input.capital_costs_learning,
+            header=list(range(n_header)),
+        )
+        cost_learning.set_index(cost_learning.columns[0],inplace=True)
     learn_i = cost_learning.index
     # non learning assets
     capital_cost = pd.read_csv(snakemake.input.capital_cost, index_col=0,
@@ -710,7 +715,7 @@ def plot_capital_costs_learning():
     capital_cost.loc["offwind"].fillna(offwind, inplace=True)
 
 
-    years = cost_learning.columns.levels[3]
+    years = capital_cost.columns.levels[3]
     costs = prepare_costs_all_years(years)
     # convert EUR/MW in EUR/kW
     costs_dea = (
@@ -777,6 +782,7 @@ def plot_capital_costs_learning():
             bbox_inches="tight",
         )
     # just for not breaking the snakemake workflow
+    fig, ax = plt.subplots(1, 1, sharex=True)
     fig.savefig(
         snakemake.output.capital_costs_learning, bbox_inches="tight",
     )
@@ -820,6 +826,7 @@ def plot_capital_costs_learning():
             bbox_inches="tight",
         )
     # just for not breaking the snakemake workflow
+    fig, ax = plt.subplots(1, 1, sharex=True)
     fig.savefig(
         snakemake.output.annual_investments, bbox_inches="tight",
     )
@@ -827,11 +834,21 @@ def plot_capital_costs_learning():
 
 def learning_cost_vs_curve():
     # capital cost for learning technologies
-    cost_learning = pd.read_csv(
-        snakemake.input.capital_costs_learning,
-        index_col=0,
-        header=list(range(n_header)),
-    )
+    try:
+        cost_learning = pd.read_csv(
+            snakemake.input.capital_costs_learning,
+            index_col=0,
+            header=list(range(n_header)),
+        )
+    except IndexError:
+        cost_learning = pd.read_csv(
+            snakemake.input.capital_costs_learning,
+            header=list(range(n_header)),
+        )
+        fig, ax = plt.subplots(1, 1, sharex=True)
+        fig.savefig(snakemake.output.learning_cost_vs_curve, bbox_inches="tight")
+        return
+        cost_learning.set_index(cost_learning.columns[0],inplace=True)
     cost_learning = cost_learning.stack().unstack(0).dropna(how="all", axis=1)
     # learning technologies
     learn_i = cost_learning.index
@@ -871,7 +888,7 @@ def learning_cost_vs_curve():
             investment_cost = ((sols["inv_per_period"] /
                                round(sols["cap_per_period"]).replace(0, np.nan)
                                )
-                               .groupby(level=0, axis=1).first())
+                               .groupby(level=0, axis=1).first())[[scenario[-1]]]
             investment_cost.iloc[0].fillna(learn_carrier.loc["initial_cost", scenario], inplace=True)
             investment_cost.fillna(method="ffill", inplace=True)
             investment_cost.rename(index=lambda x: str(x), inplace=True)
@@ -1002,6 +1019,22 @@ def plot_capacities():
         .groupby(level=1)
         .sum()
     )
+    # plot all capacities
+    carriers = ["solar PV", "onshore wind", "offshore wind", "H2 Electrolysis",
+                "battery storage", "DAC"]
+    for carrier in carriers:
+        caps = capacities.loc[carrier].unstack().T
+        caps.drop(caps.columns[caps.sum()==0], axis=1, inplace=True)
+        caps.drop("Co2L-25sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0",
+                  axis=1,inplace=True, errors="ignore")
+        s = 3*["-", "--", "-.", ":", "-", "--", "-.", ":"]
+        ls = s[:len(caps.columns)]
+        caps.plot(title=carrier, style=ls, lw=2, grid=True)
+        plt.ylabel("capacity \n [GW]")
+        plt.legend(title="scenario", bbox_to_anchor=(1,1))
+        plt.savefig(snakemake.output.capacities[:-4]+"_together_{}.pdf".format(carrier),
+                    bbox_inches="tight")
+
     rows = len(capacities.stack().columns)
     if rows==1: rows+=1
     fig, ax = plt.subplots(rows, 1, sharex=True)
@@ -1041,10 +1074,13 @@ def plot_capacities():
 
     # #####################
     # learning carriers
+    try:
+        learn_carrier = pd.read_csv(
+            snakemake.input.learn_carriers, index_col=0, header=list(range(n_header))
+        ).index
+    except IndexError:
+        learn_carrier=pd.Index([])
 
-    learn_carrier = pd.read_csv(
-        snakemake.input.learn_carriers, index_col=0, header=list(range(n_header))
-    ).index
     for carrier in learn_carrier:
         rows = len(capacities.stack().columns)
         if rows==1: rows+=1
@@ -1099,12 +1135,11 @@ if __name__ == "__main__":
         import os
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-#
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/testing_speed/configs/config.yaml', encoding='utf8') as f:
-        # with open('/home/lisa/Documents/learning_curve/results/sos2_timedelaynew_2/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/test_minco22/configs/config.yaml', encoding='utf8') as f:
+        # with open('/home/lisa/Documents/learning_curve/results/testing_co2neutral/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         #overwrite some options
@@ -1154,15 +1189,15 @@ if __name__ == "__main__":
     n_header = 4
 
     plot_costs()
-
     plot_carbon_budget_distribution()
+    plot_balances()
+
+    plot_capacities()
+
 
     # plot_energy()
 
-    plot_balances()
 
     plot_capital_costs_learning()
 
     learning_cost_vs_curve()
-
-    plot_capacities()

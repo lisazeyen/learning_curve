@@ -905,20 +905,28 @@ def set_scenario_opts(n, opts):
                 # TODO
                 if tech == "H2 electrolysis":
                     n.carriers.loc[tech, "global_factor"]  = 0.4
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 3e6 / factor
+                    # todo assume always local learning for H2 electrolysis
+                    logger.info("assume local learning for H2 Electrolysis.")
+                    n.carriers.loc[tech, "global_factor"]  = 1.
+                    factor = 1.
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 6e6 / factor
                 if tech == "H2 Electrolysis":
                     n.carriers.loc[tech, "global_factor"]  = 0.4
-                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 3e6 / factor
+                    # todo assume always local learning for H2 electrolysis
+                    logger.info("assume local learning for H2 Electrolysis.")
+                    n.carriers.loc[tech, "global_factor"]  = 1.
+                    factor = 1.
+                    n.carriers.loc["H2 Electrolysis", "max_capacity"] = 6e6 / factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
                     n.carriers.loc["DAC", "max_capacity"] = 200e3 / factor
                 if tech == "solar":
-                    n.carriers.loc["solar", "max_capacity"] = 5e6 / factor
+                    n.carriers.loc["solar", "max_capacity"] = 3e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 7e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 4e6 / factor
                 if tech == "offwind":
-                    n.carriers.loc["offwind", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["offwind", "max_capacity"] = 3.5e6 / factor
                 if tech == "battery":
                     bev_dsm_i = n.stores[n.stores.carrier == "battery storage"].index
                     n.stores.loc[bev_dsm_i, "e_nom_max"] = n.stores.loc[bev_dsm_i, "e_nom"]
@@ -1070,8 +1078,13 @@ def average_every_nhours(n, offset):
 def set_carbon_constraints(n):
     """Add global constraints for carbon emissions."""
     budget = (
-        snakemake.config["co2_budget"]["1p5"] * 1e9
+        snakemake.config["co2_budget"]["1p7"] * 1e9
     )  # budget for + 1.5 Celsius for Europe
+    for o in opts:
+        # temporal clustering
+        m = re.match(r"^\d+p\d$", o, re.IGNORECASE)
+        if m is not None:
+            budget = snakemake.config["co2_budget"][m.group(0)] * 1e9
     logger.info("add carbon budget of {}".format(budget))
     n.add(
         "GlobalConstraint",
@@ -1083,28 +1096,115 @@ def set_carbon_constraints(n):
         constant=budget,
     )
 
-    logger.info("Add carbon neutrality constraint.")
+    if not "noco2neutral" in opts:
+        logger.info("Add carbon neutrality constraint.")
+        n.add(
+            "GlobalConstraint",
+            "Co2neutral",
+            type="Co2Neutral",
+            carrier_attribute="co2_emissions",
+            investment_period=n.snapshots.levels[0][-1],
+            sense="<=",
+            constant=0,
+        )
+
+    logger.info("add minimum emissions for {} ".format(n.snapshots.levels[0][0]))
     n.add(
         "GlobalConstraint",
-        "Co2neutral",
-        type="Co2Neutral",
+        "Co2min",
+        type="Co2min",
         carrier_attribute="co2_emissions",
-        investment_period=n.snapshots.levels[0][-1],
-        sense="<=",
-        constant=0,
+        sense=">=",
+        investment_period=n.snapshots.levels[0][0],
+        constant=3.2e9,
     )
 
-    emissions_1990 = 4.53693
-    logger.info("add carbon target of {} Gt for 2030".format(0.55*emissions_1990))
-    n.add(
-        "GlobalConstraint",
-        "CarbonTarget2030",
-        type="CarbonTarget",
-        carrier_attribute="co2_emissions",
-        sense="<=",
-        investment_period=2030,
-        constant=0.55*emissions_1990*1e9,
-    )
+
+    # logger.info("add carbon budget of {} for 2030".format(0.12*budget))
+    # n.add(
+    #     "GlobalConstraint",
+    #     "Co2target2030",
+    #     type="Co2Target2",
+    #     carrier_attribute="co2_emissions",
+    #     sense="<=",
+    #     investment_period=2030,
+    #     constant=0.12*budget,
+    # )
+
+    # logger.info("add carbon budget of {} for 2040".format(0.15*budget))
+    # n.add(
+    #     "GlobalConstraint",
+    #     "Co2target2040",
+    #     type="Co2Target2",
+    #     carrier_attribute="co2_emissions",
+    #     sense="<=",
+    #     investment_period=2040,
+    #     constant=0.8*budget,
+    # )
+    # -------------------------------------------------------------------------
+
+    if not "notarget" in opts:
+        logger.info("add CO2 targets.")
+        emissions_1990 = 4.53693
+        emissions_2019 = 3.344096
+
+        logger.info("add carbon target of {} Gt for 2020 to stay below 2019 emissions".format(emissions_2019))
+        n.add(
+            "GlobalConstraint",
+            "CarbonTarget2020",
+            type="Co2Target",
+            carrier_attribute="co2_emissions",
+            sense="<=",
+            investment_period=2020,
+            constant=emissions_2019*1e9,
+        )
+
+        logger.info("add carbon target of {} Gt for 2030".format(0.45*emissions_1990))
+        n.add(
+            "GlobalConstraint",
+            "CarbonTarget2030",
+            type="Co2Target",
+            carrier_attribute="co2_emissions",
+            sense="<=",
+            investment_period=2030,
+            constant=0.45*emissions_1990*1e9,
+        )
+
+        if 2035 in n.investment_period_weightings.index:
+            logger.info("add carbon target of {} Gt for 2035".format(0.3*emissions_1990))
+            n.add(
+                "GlobalConstraint",
+                "CarbonTarget2035",
+                type="Co2Target",
+                carrier_attribute="co2_emissions",
+                sense="<=",
+                investment_period=2035,
+                constant=0.3*emissions_1990*1e9,
+            )
+
+
+        logger.info("add carbon target of {} Gt for 2040".format(0.1*emissions_1990))
+        n.add(
+            "GlobalConstraint",
+            "CarbonTarget2040",
+            type="Co2Target",
+            carrier_attribute="co2_emissions",
+            sense="<=",
+            investment_period=2040,
+            constant=0.1*emissions_1990*1e9,
+        )
+
+        if 2045 in n.investment_period_weightings.index:
+            logger.info("add carbon target of {} Gt for 2045".format(0.05*emissions_1990))
+            n.add(
+                "GlobalConstraint",
+                "CarbonTarget2045",
+                type="Co2Target",
+                carrier_attribute="co2_emissions",
+                sense="<=",
+                investment_period=2045,
+                constant=0.05*emissions_1990*1e9,
+            )
     return n
 
 
@@ -1251,15 +1351,43 @@ def add_carbon_budget_constraint(n, snapshots):
             time_valid = int(glc.loc["investment_period"])
             final_e = get_var(n, "Store", "e").groupby(level=0).last()[stores.index]
 
-            lhs = linexpr((1, final_e.loc[time_valid]))
+            #todo
+            time_weightings = n.investment_period_weightings.time_weightings.mean()
+            lhs = linexpr((time_weightings, final_e.loc[time_valid]))
             con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
+
+
+
+def add_carbon_minimum_constraint(n, snapshots):
+    glcs = n.global_constraints.query('type == "Co2min"')
+    if glcs.empty:
+        return
+    for name, glc in glcs.iterrows():
+        rhs = glc.constant
+        sense = glc.sense
+        carattr = glc.carrier_attribute
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
+        if emissions.empty:
+            continue
+
+        # stores
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
+        if not stores.empty:
+            time_valid = int(glc.loc["investment_period"])
+            final_e = get_var(n, "Store", "e").groupby(level=0).last()[stores.index]
+
+            #todo
+
+            lhs = linexpr((1, final_e.loc[time_valid]))
+            con = write_constraint(n, lhs, sense, rhs, axes=pd.Index([name]))
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
 
 def add_carbon_target(n, snapshots):
     glcs = n.global_constraints.query('type == "Co2Target"')
-    if glcs.empty:
-        return
+
     for name, glc in glcs.iterrows():
         rhs = glc.constant
         carattr = glc.carrier_attribute
@@ -1274,9 +1402,28 @@ def add_carbon_target(n, snapshots):
             time_valid = int(glc.loc["investment_period"])
             final_e = get_var(n, "Store", "e").groupby(level=0).last()[stores.index]
             first_e = get_var(n, "Store", "e").groupby(level=0).first()[stores.index]
-
             lhs = linexpr((1, final_e.loc[time_valid]),
                           (-1, first_e.loc[time_valid]))
+            con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
+            set_conref(n, con, "GlobalConstraint", "mu", name)
+
+    glcs = n.global_constraints.query('type == "Co2Target2"')
+    if glcs.empty:
+        return
+    for name, glc in glcs.iterrows():
+        rhs = glc.constant
+        carattr = glc.carrier_attribute
+        emissions = n.carriers.query(f"{carattr} != 0")[carattr]
+        if emissions.empty:
+            continue
+
+        # stores
+        n.stores["carrier"] = n.stores.bus.map(n.buses.carrier)
+        stores = n.stores.query("carrier in @emissions.index and not e_cyclic")
+        if not stores.empty:
+            time_valid = int(glc.loc["investment_period"])
+            first_e = get_var(n, "Store", "e").groupby(level=0).first()[stores.index]
+            lhs = linexpr((1, first_e.loc[time_valid]))
             con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
@@ -1441,6 +1588,7 @@ def prepare_network(n, solve_opts=None):
             )
             add_carbon_neutral_constraint(n, snapshots)
             add_carbon_budget_constraint(n, snapshots)
+            add_carbon_minimum_constraint(n, snapshots)
             add_carbon_target(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
@@ -1457,6 +1605,7 @@ def prepare_network(n, solve_opts=None):
         def extra_functionality(n, snapshots):
             add_battery_constraints(n)
             add_carbon_neutral_constraint(n, snapshots)
+            add_carbon_minimum_constraint(n, snapshots)
             add_carbon_target(n, snapshots)
             add_carbon_budget_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
@@ -1530,7 +1679,7 @@ def prepare_network(n, solve_opts=None):
                     )
                     if "nolearning_cost" not in t.df.columns:
                         t.df["nolearning_cost"] = np.NaN
-                    t.df.loc[learn_assets, "nolearning_cost"] = n.links.loc[learn_assets, "nolearning_cost"].fillna(0) + nolearn_noise
+                    t.df.loc[learn_assets, "nolearning_cost"] = t.df.loc[learn_assets, "nolearning_cost"].fillna(0) + nolearn_noise
 
 
         for t in n.iterate_components(["Line", "Link"]):
@@ -1832,6 +1981,29 @@ def remove_techs_for_speed(n):
         n.mremove(c, assets_i)
 
 
+def add_conv_generators(n, carrier):
+    conv_df = n.links[n.links.carrier==carrier]
+    logger.info("add extendable conventionals for {}".format(carrier))
+    for year in years:
+        n.add("Link",
+              "{}-{}".format(carrier, year),
+              bus0=conv_df.bus0[0],
+              bus1=conv_df.bus1[0],
+              bus2=conv_df.bus2[0],
+              p_nom_extendable=True,
+              marginal_cost=conv_df.marginal_cost.mean(),
+              capital_cost=conv_df.capital_cost.mean(),
+              efficiency=conv_df.efficiency.mean(),
+              efficiency2=conv_df.efficiency2.mean(),
+              build_year=year,
+              # carrier=carrier,
+              lifetime=conv_df.lifetime.mean(),
+              # location=conv_df.location[0]
+              )
+        n.links.loc["{}-{}".format(carrier, year), "carrier"] = carrier
+        n.links.loc["{}-{}".format(carrier, year), "location"] = conv_df.location[0]
+    return n
+
 #%%
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -1842,7 +2014,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-120sn",
+            sector_opts="Co2L-120sn-learnbatteryxchargerp0",
             clusters="37",
         )
 
@@ -1915,6 +2087,10 @@ if __name__ == "__main__":
     sols = pd.DataFrame()
 
     remove_techs_for_speed(n)
+
+    # for carrier in ["nuclear", "lignite", "coal", "CCGT"]:
+    #     n = add_conv_generators(n, carrier)
+
     #%%
     with memory_logger(
         filename=getattr(snakemake.log, "memory", None), interval=30.0

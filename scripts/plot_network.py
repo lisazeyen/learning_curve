@@ -742,10 +742,10 @@ if __name__ == "__main__":
         snakemake = Dict()
         # "results/split_regions/configs/"
         # with open('/home/lisa/Documents/learning_curve/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/mnt/lisa/learning_curve/results/testing_speed/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/oneEU_3learn_newupperbound/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
-        sector_opts="Co2L-3h-learnH2xElectrolysisp0-local"
+        sector_opts="Co2L-73sn-notarget-1p7-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0"
         snakemake.input = Dict()
         snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
         snakemake.output = Dict(
@@ -754,7 +754,7 @@ if __name__ == "__main__":
         supply="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-supply.pdf".format(sector_opts),)
         # os.chdir("/home/lisa/Documents/learning_curve/")
         os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-
+#
     n = pypsa.Network(snakemake.input.network,
                       override_component_attrs=override_component_attrs)
 
@@ -762,12 +762,13 @@ if __name__ == "__main__":
     del map_opts["p_nom"]
     del map_opts["figsize"]
 
-    plot_map(n,
-        components=["Generator", "Link", "Store"],
-        bus_size_factor=1.5e10,
-    )
+    if not snakemake.config["one_node"]:
+        plot_map(n,
+            components=["Generator", "Link", "Store"],
+            bus_size_factor=1.5e10,
+        )
 
-    plot_h2_map(n)
+        plot_h2_map(n)
 
     plot_series(n, carrier="AC")
     plot_series(n, carrier="heat")

@@ -1,4 +1,4 @@
-run: "testing_speed"
+run: "testing_minco2"
 
 logging:
   level: INFO
@@ -7,18 +7,18 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-148sn-learnH2xElectrolysisp0, Co2L-148sn-learnH2xElectrolysisp0-local,Co2L-148sn-learnH2xElectrolysismp10-local]
+  sector_opts: [Co2L-146sn-notarget-1p6, Co2L-146sn-notarget-1p7, Co2L-146sn-notarget-2p0]
   investment_periods: [2020, 2025, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
-one_node: False
+one_node: True
 # cluster residential and services heat nodes together
 cluster_heat_nodes: True
 # cluster to representative regions
-cluster_regions: True
+cluster_regions: False
 # must run condition for heating learning_technologies
 heat_must_run: True
 # only select certain countries
@@ -32,9 +32,9 @@ limit_growth_lb: False
 # data set depending on their build year
 seqcost_update: False  # not working for offwind
 # option to retrofit existing methane boilers to H2 boilers
-h2boiler_retrofit: False
+h2boiler_retrofit: True
 # option to retrofit existing OCGT to run with H2
-OCGT_retrofit: False
+OCGT_retrofit: True
 # number of linear segments for MIP
 segments: 5
 # temporal aggregeation for presolve
@@ -173,7 +173,7 @@ solving:
     MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
     MIPFocus: 1
     Cuts: 3
-    TimeLimit: 350   # in seconds
+    # TimeLimit: 350   # in seconds
     NodeFileStart: 0.5
     #ScaleFlag: 0
     # - Heuristics: 0

@@ -935,9 +935,9 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
     cum_cost_max = (
         y_ub.groupby(level=0, axis=1).max(**agg_group_kwargs).reindex(learn_i, axis=1)
     )
-
+    # upper bound has to be largerthan cum_cost_max with time delay!
     cum_cost = define_variables(
-        n, cum_cost_min, cum_cost_max, c, "cumulative_cost", axes=[investments, learn_i]
+        n, cum_cost_min, np.inf, c, "cumulative_cost", axes=[investments, learn_i]
     )
 
     # ---- define cumulative costs constraints -----------------------------
