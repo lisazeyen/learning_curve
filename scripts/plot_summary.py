@@ -711,7 +711,7 @@ def plot_capital_costs_learning():
     # non learning assets
     capital_cost = pd.read_csv(snakemake.input.capital_cost, index_col=0,
                                header=list(range(n_header)))
-    offwind = capital_cost.loc[["offwind-ac", "offwind-dc"]].mean()
+    offwind = capital_cost.reindex(["offwind-ac", "offwind-dc"]).mean()
     capital_cost.loc["offwind"].fillna(offwind, inplace=True)
 
 
@@ -1133,13 +1133,13 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/test_minco22/configs/config.yaml', encoding='utf8') as f:
-        # with open('/home/lisa/Documents/learning_curve/results/testing_co2neutral/configs/config.yaml', encoding='utf8') as f:
+        # with open('/home/lisa/mnt/lisa/learning_curve/results/offwind_lr_test/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         #overwrite some options
@@ -1170,8 +1170,8 @@ if __name__ == "__main__":
         learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
         )
 
-        # os.chdir("/home/lisa/Documents/learning_curve")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        os.chdir("/home/lisa/Documents/learning_curve")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"

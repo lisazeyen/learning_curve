@@ -144,6 +144,16 @@ def aggregate_timeseries(timeseries_df, n_periods, hours, extremePeriodMethod,
     new_snapshots_all = pd.DataFrame()
     clustered_all = pd.DataFrame()
 
+    if solver=="gurobi":
+        if find_spec("gurobipy") is None:
+            raise ModuleNotFoundError(
+                "Optional dependency 'gurobipy' not found. "
+                "Install via 'conda install -c gurobi gurobi'  or follow the "
+                "instructions on the documentation page "
+                "https://www.gurobi.com/documentation/"
+            )
+        import gurobipy
+
     for year in timeseries_df.index.levels[0]:
         aggregation = tsam.TimeSeriesAggregation(
                                 timeseries_df.loc[year],

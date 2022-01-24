@@ -1094,6 +1094,9 @@ def make_summaries(networks_dict):
             continue
             # del networks_dict[label]
 
+        if not hasattr(n, "objective"):
+            print(label, " not solved correctly. Check log if infeasible or unbounded.")
+            continue
         assign_carriers(n)
         assign_locations(n)
 
@@ -1115,24 +1118,33 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/results/test_minco22/configs/config.yaml', encoding='utf8') as f:
-        # with open("/home/lisa/Documents/learning_curve/results/testing_co2neutral/configs/config.yaml", encoding='utf8') as f:
+        # with open('/home/lisa/mnt/lisa/learning_curve/results/newoffwind/configs/config.yaml', encoding='utf8') as f:
+        with open("/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml", encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         snakemake.input = Dict()
         snakemake.input['costs'] = "data/costs/costs_2020.csv"
+        snakemake.config["run"] = "newrates_73sn_1p5"
         snakemake.output = Dict()
         for item in outputs:
             snakemake.output[item] =  'results/{name}/csvs/{item}.csv'.format(name=snakemake.config['run'],item=item)
 
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        os.chdir("/home/lisa/Documents/learning_curve/")
 
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-        # os.chdir("/home/lisa/Documents/learning_curve/")
+
+    snakemake.config["scenario"]["sector_opts"] = []
+    # "/home/lisa/Documents/learning_curve/results/"
+    for file in os.listdir( "/home/lisa/Documents/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
+        if file.endswith(".nc"):
+            label = file.replace('elec_s_EU_', '')[:-3]
+            snakemake.config["scenario"]["sector_opts"].append(label)
+
 
     networks_dict = {
         (clusters, lv, sector_opt): "results/"

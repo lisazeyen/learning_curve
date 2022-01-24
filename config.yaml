@@ -1,4 +1,4 @@
-run: "testing_minco2"
+run: "testing_seqcost"
 
 logging:
   level: INFO
@@ -55,7 +55,7 @@ learning_rates:
   solar: 0.24   # DEA p.262 24%,
   solar rooftop: 0.24   # DEA p.262 24%,
   onwind: 0.10  # IRENA 2017 20%, DEA for elec and heat p. 220 assume 10%
-  offwind: 0.16
+  offwind: 0.10
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
   H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf

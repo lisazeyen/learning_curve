@@ -909,7 +909,9 @@ def set_scenario_opts(n, opts):
                     logger.info("assume local learning for H2 Electrolysis.")
                     n.carriers.loc[tech, "global_factor"]  = 1.
                     factor = 1.
-                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 6e6 / factor
+                    # todo global capacity
+                    n.carriers.loc[tech, "global_capacity"] = 1e3
+                    n.carriers.loc["H2 electrolysis", "max_capacity"] = 5e6 / factor
                 if tech == "H2 Electrolysis":
                     n.carriers.loc[tech, "global_factor"]  = 0.4
                     # todo assume always local learning for H2 electrolysis
@@ -924,7 +926,7 @@ def set_scenario_opts(n, opts):
                 if tech == "solar":
                     n.carriers.loc["solar", "max_capacity"] = 3e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 4e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 3e6 / factor
                 if tech == "offwind":
                     n.carriers.loc["offwind", "max_capacity"] = 3.5e6 / factor
                 if tech == "battery":
@@ -1008,6 +1010,10 @@ def set_temporal_aggregation(n, opts):
             hours = int(o.split("p")[1].split("h")[0])
             clusterMethod = opts_t["clusterMethod"].replace("-", "_")
             extremePeriodMethod = opts_t["extremePeriodMethod"].replace("-", "_")
+            if "Noneextreme" in opts:
+                extremePeriodMethod = "None"
+            if "kmedoids" in opts:
+                clusterMethod = "k_medoids"
             kind = opts_t["kind"]
 
             logger.info(
@@ -1027,6 +1033,7 @@ def set_temporal_aggregation(n, opts):
                 hours=hours,
                 clusterMethod=clusterMethod,
                 extremePeriodMethod=extremePeriodMethod,
+                solver="gurobi_direct",
             )
     return n
 
@@ -1480,7 +1487,7 @@ def add_capacity_constraint(n, snapshots):
     logger.info("add constraint for minimum installed capacity to speed up optimisation")
 
     # c, attr = "Generator", "p_nom"
-    # res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
+    # res = ["offwind", "onwind", "solar", "solar rooftop"]
     # ext_i = n.df(c)[
     #     (n.df(c)["carrier"].isin(res)) & (n.df(c)["p_nom_extendable"])
     # ].index
@@ -1494,7 +1501,7 @@ def add_capacity_constraint(n, snapshots):
     #     .reindex(index=res)
     # )
 
-    # rhs = pd.Series([140e3, 200e3, 900e3, 700e3, 400e3], index=res)
+    # rhs = pd.Series([1800e3, 100e3, 1300e3, 100e3], index=res)
 
     # define_constraints(n, lhs, ">=", rhs, "GlobalConstraint", "min_cap")
 
@@ -1693,6 +1700,13 @@ def prepare_network(n, solve_opts=None):
         n.set_snapshots(n.snapshots[:nhours])
         n.snapshot_weightings[:] = 8760.0 / nhours
 
+    if "MIP1" in opts:
+        solver_options["MIPFocus"] = 1
+    if "MIP2" in opts:
+        solver_options["MIPFocus"] = 2
+    if "MIP3" in opts:
+        solver_options["MIPFocus"] = 3
+
     return (
         extra_functionality,
         skip_objective,
@@ -1777,9 +1791,9 @@ def seqlopf(
 
     def get_new_cost(n, c, time_delay=True):
         """Calculate new cost depending on installed capacities."""
+        # PARAMETERS #############################################
         assets = n.df(c).loc[prev[c].index]
         learn_carriers = assets.carrier.unique()
-
         # learning rate
         learning_rate = n.carriers.loc[learn_carriers, "learning_rate"]
         # initial installed capacity
@@ -1787,6 +1801,7 @@ def seqlopf(
         # initial cost
         c0 = n.carriers.loc[learn_carriers, "initial_cost"]
 
+        # CAPACITY ##########################################################
         # installed capacity per investment period
         attr = nominal_attrs[c]
         p_nom = assets.groupby([assets.carrier, assets.build_year]).sum()[f"{attr}_opt"]
@@ -1797,41 +1812,46 @@ def seqlopf(
             .div(n.carriers.loc[learn_carriers, "global_factor"], axis=0)
             .add(initial_cum_cap, axis=0)
         )
-
         cum_p_nom[0] = initial_cum_cap
         cum_p_nom.sort_index(axis=1, inplace=True)
         cumulative_cost = pd.DataFrame().reindex_like(cum_p_nom)
-        # cost paid per MW installed capacity
+
+        # COST ############################################################################################################
+        # cumulative cost according exactly to learning curve
         for carrier in learn_carriers:
             cumulative_cost.loc[carrier] = cum_p_nom.loc[carrier].apply(lambda x:
                                               cumulative_cost_curve(x,
                                                                     learning_rate.loc[carrier],
                                                                     c0.loc[carrier],
                                                                     initial_cum_cap.loc[carrier]))
-        cost = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)).replace(0, np.nan))
-        cost[0] = c0
-        cost = cost.fillna(method="ffill", axis=1)
+        # (a) average cost paid per MW -> exaclty on learning curve (ATTENTION: this is NOT the same as investment costs (c)!)
+        cost_av = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)).replace(0, np.nan))
+        cost_av[0] = c0
+        cost_av = cost_av.fillna(method="ffill", axis=1)
 
-        # (a) investment costs by piecewise linearisation
+        # (b) investment costs by piecewise linearisation
         x_high = n.carriers.loc[learn_carriers, "max_capacity"]
         segments = snakemake.config["segments"]
         points = get_linear_interpolation_points(n, initial_cum_cap, x_high, segments)
         slope = get_slope(points)
         # costs for new build capacity in investment period
-        cost_new = pd.DataFrame(columns=learn_carriers)
+        cost_plinear = pd.DataFrame(columns=learn_carriers)
         for carrier in learn_carriers:
             x_fit = points.xs("x_fit", level=1, axis=1)[carrier]
-            cost_new[carrier] = (
+            cost_plinear[carrier] = (
                 cum_p_nom.loc[carrier]
                 .apply(lambda x: np.searchsorted(x_fit, x, side="right") - 1)
                 .map(slope[carrier])
                 .fillna(slope[carrier].iloc[-1])
             )
         if time_delay:
-            cost = cost.shift(axis=1)
-            cost.iloc[:,0] = c0
+            cost_av = cost_av.shift(axis=1)
+            cost_av.iloc[:,0] = c0
 
-        # (b) investment costs exactly form learning curve
+            cost_plinear = cost_plinear.shift()
+            cost_plinear.iloc[0,:] = c0
+
+        # (c) investment costs exactly form learning curve
         capital_cost = cum_p_nom.apply(
             lambda x: experience_curve(
                 x,
@@ -1842,20 +1862,20 @@ def seqlopf(
             axis=1,
         )
         # averaged paid costs
-        new_costs = pd.Series(
-            n.df(c).set_index(["carrier", "build_year"]).index.map(cost.stack()),
+        cost_av = pd.Series(
+            n.df(c).set_index(["carrier", "build_year"]).index.map(cost_av.stack()),
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
         # costs for newly build asset in investment period
-        cost_new = pd.Series(
-            n.df(c).set_index(["carrier", "build_year"]).index.map(cost_new.T.stack()),
+        cost_plinear = pd.Series(
+            n.df(c).set_index(["carrier", "build_year"]).index.map(cost_plinear.T.stack()),
             index=n.df(c).index,
         ).fillna(n.df(c).capital_cost)
-        # for offshore wind costs without learning
-        if c == "Generator":
-            new_costs.loc[assets.index] += n.generators.loc[assets.index, "nolearning_cost"].fillna(0)
+        # add costs without learning
+        if "nolearning_cost" in n.df(c).columns:
+            cost_plinear.loc[assets.index] += n.df(c).loc[assets.index, "nolearning_cost"].fillna(0)
 
-        return new_costs
+        return cost_plinear
 
     def update_cost_params(n, prev, time_delay):
         """Update cost parameters according to installed capacities."""
@@ -2014,7 +2034,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-120sn-learnbatteryxchargerp0",
+            sector_opts="Co2L-143sn-learnoffwindp0-learnsolarp0-learnH2xElectrolysisp0-learnonwindp0-seqcost",
             clusters="37",
         )
 
@@ -2087,6 +2107,11 @@ if __name__ == "__main__":
     sols = pd.DataFrame()
 
     remove_techs_for_speed(n)
+
+    if "nogridcost" in opts:
+        logger.info("no grid connection costs for solar and onwind assumed")
+        gen_i = n.generators[n.generators.carrier.isin(["solar", "onwind"])&n.generators.p_nom_extendable].index
+        n.generators.loc[gen_i, "nolearning_cost"] = 0.
 
     # for carrier in ["nuclear", "lignite", "coal", "CCGT"]:
     #     n = add_conv_generators(n, carrier)
