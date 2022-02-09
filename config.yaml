@@ -1,4 +1,4 @@
-run: "testing_seqcost"
+run: "testing_seqlopf"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-146sn-notarget-1p6, Co2L-146sn-notarget-1p7, Co2L-146sn-notarget-2p0]
+  sector_opts: [Co2L-73sn-notarget-1p5-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-1p5-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost,Co2L-73sn-notarget-1p5-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-2p0-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost]
   investment_periods: [2020, 2025, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -81,10 +81,11 @@ co2_budget:
   2040: 0.0712365591
   2045: 0.0322580645
   2050: 0
-  1p5 : 25 # Budget in Gt CO2 for 1.5 for Europe, global 420 Gt, assuming per capita share
+  # update of IPCC 6th AR compared to the 1.5SR. (discussed here: https://twitter.com/JoeriRogelj/status/1424743828339167233)
+  1p5 : 25.7 # Budget in Gt CO2 for 1.5 for Europe, global 420 Gt, assuming per capita share
   1p6 : 35  # Budget in Gt CO2 for 1.6 for Europe, global 580 Gt
-  1p7 : 48  # Budget in Gt CO2 for 1.7 for Europe, global 800 Gt
-  2p0 : 70 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
+  1p7 : 45  # Budget in Gt CO2 for 1.7 for Europe, global 800 Gt
+  2p0 : 73.9 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
 
 sector:
   electricity_grid_connection: True
@@ -171,7 +172,7 @@ solving:
     # NoRelHeurTime: 300
     # NodeMethod: 2 # algorithm used for MIP node relaxation, 2=barrier
     MIPGap: 0.05    # 5% gap between (ObjBound-ObjVal)/ObjVal
-    MIPFocus: 1
+    MIPFocus: 2
     Cuts: 3
     # TimeLimit: 350   # in seconds
     NodeFileStart: 0.5
