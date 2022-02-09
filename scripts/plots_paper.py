@@ -70,6 +70,11 @@ color_dict = {"1p5": "green",
               "2p0": "indianred",
               "base": "slategrey",
               "seqcost": "goldenrod",}
+marker_dict = {"1p5": "o",
+              "1p7": "D",
+              "2p0": "X",
+              "base": "P",
+              "seqcost": "H",}
 line_style = {
               "1p5": "--",
               "1p7": "-.",
@@ -514,6 +519,7 @@ def plot_capital_costs_learning():
             caps = cost_learning_all[budget].loc[tech].unstack().T
             caps = caps.div(a.T.values)
             scen = caps.loc[:, caps.columns.str.contains(scenario)]
+            print(budget, tech, scen.loc["2050"])
 
             ax.fill_between(caps.index, caps.min(axis=1), caps.max(axis=1),
                             alpha=0.2, facecolor=color_dict[budget])
@@ -727,6 +733,82 @@ def plot_costs_methods():
         plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/total_costs_per_year_method_{}.pdf".format(budget),
                     bbox_inches="tight")
 
+    costs_df = pd.concat(cost_df_all, axis=1)
+    costs_df = costs_df.droplevel([1,2], axis=1)
+    costs_df = costs_df.loc[:,costs_df.sum()!=0]
+    costs_df.rename(columns = lambda x: x + "-endogen" if ("learn" in x and not "seqcost" in x) else x, inplace=True, level=1)
+    costs_df.rename(columns = lambda x: x + "-base" if not "learn" in x else x, inplace=True, level=1)
+
+
+    scenarios = costs_df.loc[:,costs_df.columns.get_level_values(1).str.contains(scenario+"-")]
+    base_cost_n = 'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP2-endogen'
+    base_cost = costs_df.loc[:,costs_df.columns.get_level_values(1) == base_cost_n]
+    plt.style.use("default")
+    fig, ax = plt.subplots()
+    for budget in budgets:
+        diff = costs_df.sum()[budget].unstack().T.div(base_cost.sum(),axis=0)
+        for sc in filters:
+            df = diff.loc[:,diff.columns.str.contains(sc)]
+            df = df.droplevel([0,1])
+            if sc!="base":
+                scen = df.loc[:, df.columns.str.contains(scenario)]
+                if len(scen.columns)!=1: scen = scen[[base_cost_n]]
+                scen.columns = [sc]
+                if sc=="endogen":
+                    name=budget
+                else:
+                    name=sc
+                ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
+                                alpha=0.2, facecolor=color_dict[name])
+                scen.plot(ax=ax, color=color_dict[name], lw=2,
+                          ls=line_style[budget])
+            else:
+                df.columns = [sc]
+                df.plot(ax=ax, color=color_dict[sc], lw=2,
+                          ls=line_style[budget])
+    plt.legend(title="1p5                     1p7                       2p0", fancybox=True,
+               facecolor="white", frameon=True, loc="lower left", ncol=3, bbox_to_anchor=(0.,1))
+    plt.ylabel("System cost increase compared to 2p0 \n [per unit]")
+    ax.set_xlim(["2020", "2050"])
+    ax.grid(axis="y")
+
+    plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/total_costs_diff_method_percent{}.pdf".format(budget),
+                bbox_inches="tight")
+
+    fig, ax = plt.subplots()
+    for budget in budgets:
+        diff = costs_df.loc["H2 Electrolysis"][budget].unstack().T#.sub(base_cost.loc["H2 Electrolysis"],axis=0)
+        for sc in filters:
+            df = diff.loc[:,diff.columns.str.contains(sc)]
+            # df = df.droplevel([0,1])
+            if sc!="base":
+                scen = df.loc[:, df.columns.str.contains(scenario)]
+                if len(scen.columns!=1): scen = scen.iloc[:,:1]
+                scen.columns = [sc]
+                if sc=="endogen":
+                    name=budget
+                    ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
+                                    alpha=0.2, facecolor=color_dict[name])
+                else:
+                    name=sc
+                scen.plot(ax=ax, color=color_dict[name],
+                          marker=marker_dict[budget],
+                           lw=2, ls=line_style[budget]
+                          )
+            else:
+                df.columns = [sc]
+                df.plot(ax=ax, color=color_dict[sc],
+                        marker=marker_dict[budget],
+                        lw=2, ls=line_style[budget]
+                        )
+    plt.legend(title="1p5                     1p7                       2p0", fancybox=True,
+               facecolor="white", frameon=True, loc="lower left", ncol=3, bbox_to_anchor=(0.,1))
+    plt.ylabel("Investments in H2 Electrolysis\n [billion Euro per year]")
+    ax.set_xlim(["2020", "2050"])
+    ax.grid(axis="y")
+
+    plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/total_costs_invmethod_h2electrolysis.pdf",
+                bbox_inches="tight")
 
 def plot_capacities_methods():
     capacities_all = {}
@@ -754,8 +836,8 @@ def plot_capacities_methods():
                 "battery storage", "DAC"]
 
     for carrier in carriers:
+        fig, ax = plt.subplots()
         for budget in budgets:
-            fig, ax = plt.subplots()
             caps = capacities_all[budget].loc[carrier].unstack().T
             caps.rename(columns = lambda x: x + "-endogen" if ("learn" in x and not "seqcost" in x) else x, inplace=True)
             caps.rename(columns = lambda x: x + "-base" if not "learn" in x else x, inplace=True)
@@ -764,20 +846,25 @@ def plot_capacities_methods():
                 if df.empty: continue
                 if not sc=="base":
                     scen =  df.loc[:, (df.columns.str.contains(scenario) & ~df.columns.str.contains("nogridcost"))]
-                    name = 'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP1'
+                    name = 'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP1-endogen'
                     if name in scen.columns:
                         scen = scen[[name]]
                     if len(scen.columns)==1:
                         scen.columns = [sc]
-                        if sc=="endogen": sc=budget
+                        if sc=="endogen":
+                            sc=budget
+                            ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
+                                            alpha=0.2, facecolor=color_dict[sc])
                         scen.plot(ax=ax, color=color_dict[sc], lw=2,
-                                  ls=line_style[budget])
-                    if sc=="endogen": sc=budget
-                    ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
-                                    alpha=0.2, facecolor=color_dict[sc])
+                                  ls=line_style[budget], marker=marker_dict[budget])
+                    if sc=="endogen":
+                        sc=budget
+
+                        ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
+                                        alpha=0.2, facecolor=color_dict[sc])
                 else:
                     df.columns=["exogen"]
-                    df.plot(ax=ax, color=color_dict[sc], lw=2,
+                    df.plot(ax=ax, color=color_dict[sc], lw=2, marker=marker_dict[budget],
                               ls=(0, (3, 1, 1, 1, 1, 1)))
 
 
@@ -786,11 +873,12 @@ def plot_capacities_methods():
             plt.xlabel("year")
             ax.set_xlim(["2020", "2050"])
             ax.set_ylim(bottom=0)
-            plt.legend(loc="upper left", title="CO$_2$ Budget {}".format(budget), fancybox=True,
-                       facecolor="white", frameon=True)
+            plt.legend(title="1p5                     1p7                       2p0",
+                       loc="upper left", fancybox=True,
+                       facecolor="white", frameon=True, ncol=3)
 
 
-            plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/" + "capacity_method_{}_{}.pdf".format(budget, carrier),
+            plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/" + "capacity_method_{}.pdf".format(carrier),
                         bbox_inches="tight")
 
 def plot_carbon_budget_distribution_methods():
@@ -1019,8 +1107,8 @@ def plot_capital_costs_learning_methods():
                     if len(scen.columns)==1:
                         scen.columns = [sc]
                     if sc=="endogen": sc=budget
-                    # ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
-                    #                 alpha=0.2, facecolor=color_dict[sc])
+                    ax.fill_between(df.index, df.min(axis=1), df.max(axis=1),
+                                    alpha=0.2, facecolor=color_dict[sc])
                     if len(scen.columns)==1:
                         scen.plot(ax=ax, color=color_dict[sc], lw=2,
                                   ls=line_style[budget])
@@ -1041,6 +1129,145 @@ def plot_capital_costs_learning_methods():
                         bbox_inches="tight")
 
 
+
+def plot_duration_curve():
+    for budget in budgets:
+        n = pypsa.Network(
+            "/home/lisa/Documents/learning_curve/results/newrates_73sn_{}/postnetworks/elec_s_EU_Co2L-73sn-notarget-{}-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost.nc".format(budget, budget), override_component_attrs=override_component_attrs
+        )
+        p_nom_used = n.links_t.p0.loc[:,n.links.carrier=="H2 Electrolysis"] / n.links[n.links.carrier=="H2 Electrolysis"].p_nom_opt
+
+        duration_curve={}
+        for year in p_nom_used.index.levels[0]:
+            p_nom_annual = p_nom_used.loc[year]
+            p_nom_annual = p_nom_annual.loc[:,round(p_nom_annual.sum())!=0]
+            p_nom_annual =p_nom_annual.mean(axis=1).rename(index=lambda x: (x.dayofyear-1)*24+x.hour)
+            duration_curve[year] = p_nom_annual.sort_values(ascending=False).reset_index(drop=True)
+            duration_curve[year].rename(index=lambda x: x*n.snapshot_weightings.iloc[0,0], inplace=True)
+
+        ls = (5*["-", "--", "-.", ":", "-", "--", "-.", ":"])[:len(duration_curve.keys())]
+        fig, ax = plt.subplots()
+        fig.suptitle(budget, fontsize=16)
+        pd.concat(duration_curve, axis=1).plot(ax=ax, style=ls, grid=True, lw=2, cmap="viridis")
+        plt.ylabel("used capacity / installed capacity \n [per unit]")
+        plt.xlabel("hour of year")
+        ax.set_xlim([0, 8760])
+        # ax.set_ylim(bottom=0)
+        lg = ax.legend(title="investment period",
+            fancybox=True, fontsize=12, loc="upper right", facecolor="white", frameon=True
+        )
+        lg.get_title().set_fontsize(12)
+        plt.savefig("/home/lisa/Documents/learning_curve/graphs_iew/" + "duration_curve_{}.pdf".format(budget),
+                    bbox_inches="tight")
+
+
+nice_name={'onwind' : 'Onshore Wind',
+      'offwind' : 'Offshore Wind',
+      'solar-utility' : 'Solar PV (utility-scale)',
+      'solar-rooftop' : 'Solar PV (rooftop)',
+      'OCGT': 'OCGT',
+      'CCGT': 'CCGT',
+      'coal':  'Coal power plant',
+      'lignite': 'Lignite power plant',
+      'nuclear': 'Nuclear power plant',
+      'hydro':'Reservoir hydro',
+      'ror':'Run of river',
+      'PHS':'PHS',
+      'battery inverter': 'Battery inverter',
+      'battery storage': 'Battery storage',
+      'hydrogen storage underground': 'H$_2$ storage underground',
+      'hydrogen storage tank': 'H$_2$ storage tank',
+      'electrolysis': 'Electrolysis',
+      'fuel cell': 'Fuel cell',
+      'methanation': 'Methanation',
+      'DAC': 'DAC (direct-air capture)',
+      'direct air capture': 'DAC (direct-air capture)',
+      'central gas boiler': 'Gas boiler central',
+      'decentral gas boiler': 'Gas boiler decentral',
+      'central resistive heater':'Resistive heater central',
+      'decentral resistive heater':'Resistive heater decentral',
+      'central gas CHP': 'CHP gas',
+      'central coal CHP': 'CHP coal',
+      'biomass CHP':'CHP biomass',
+      'biomass EOP':'Biomass power plant',
+      'biomass HOP':'Biomass central heat plant',
+      'central water tank storage': 'Water tank storage central',
+      'decentral water tank storage': 'Water tank storage decentral',
+      'water tank charger': 'Water tank charger/discharger',
+      'HVDC overhead':'HVDC overhead',
+      'HVDC inverter pair':'HVDC inverter pair',
+      'decentral air-sourced heat pump': 'Air-sourced heat pump decentral',
+      'central air-sourced heat pump': 'Air-sourced heat pump central',
+      'central ground-sourced heat pump': 'Ground-sourced heat pump central',
+      'decentral air-sourced heat pump': 'Air-sourced heat pump decentral',
+      'decentral ground-sourced heat pump':  'Ground-sourced heat pump decentral',
+      'Gasnetz': 'Gas pipeline',
+      'micro CHP': 'CHP micro',
+      'central solid biomass CHP': 'CHP solid biomass',
+      'helmeth': 'Helmeth (Power to SNG, KIT project)',
+      'H2 pipeline': 'H2 pipeline',
+      'SMR': 'Steam Methane Reforming (SMR)',
+      'SMR CC': 'Steam Methane Reforming (SMR) with Carbon Capture (CC)',
+      'biogas upgrading': 'Biogas upgrading',
+      'decentral solar thermal': 'Solar thermal central',
+      'central solar thermal': 'Solar thermal decentral',
+      'electricity distribution grid': 'Electricity distribution grid',
+       'electricity grid connection': 'Electricity grid connection',
+       'gas storage': 'Gas storage (underground cavern)',
+       'gas storage charger': 'Gas storage injection',
+       'gas storage discharger': 'Gas storage withdrawl',
+       'biomass CHP capture': 'CHP solid biomass with Carbon Capture',
+       'decentral oil boiler': 'Oil boiler decentral',
+       'decentral gas boiler connection': 'Gas boiler connection'
+      }
+
+def costs_to_latex(years):
+    to_drop = ['Ammonia cracker', 'seawater desalination', 'solar',
+               'CH4 (g) fill compressor station',
+               'CH4 (g) pipeline', 'CH4 (g) submarine pipeline',
+               'CH4 (l) transport ship', 'CH4 evaporation', 'CH4 liquefaction',
+               'CO2 liquefaction', 'CO2 pipeline',
+               'CO2 submarine pipeline','FT fuel transport ship','General liquid hydrocarbon storage (crude)',
+               'General liquid hydrocarbon storage (product)',  'H2 (g) pipeline',
+               'H2 (g) pipeline repurposed',
+                 'H2 (g) submarine pipeline', 'H2 (l) transport ship',
+                 'H2 evaporation', 'H2 liquefaction',
+                 'H2 pipeline', 'HVAC overhead', 'HVDC inverter pair', 'HVDC overhead',
+                 'HVDC submarine', 'LNG storage tank',
+                 'LOHC chemical', 'LOHC dehydrogenation', 'LOHC hydrogenation',
+                 'LOHC loaded DBT storage', 'LOHC transport ship',
+                 'LOHC unloaded DBT storage', 'MeOH transport ship',
+                 'NH3 (l) storage tank incl. liquefaction', 'NH3 (l) transport ship',
+                 'air separation unit', 'clean water tank storage',
+                 'methanolisation', 'water tank discharger', 'Steam methane reforming',
+                 'gas', 'solid biomass', 'biogas', 'biomass', 'uranium', 'Methanol steam reforming',
+                 'Gas storage (underground cavern)', 'Gas storage withdrawl',
+                 'Gas storage injection', 'oil', 'H2 (g) fill compressor station',
+                 'H2 (l) storage tank', 'Biomass power plant',
+                 'Biomass central heat plant', 'Gas pipeline', 'decentral CHP',
+                 'central coal CHP']
+    quantities = ["FOM", "VOM", "efficiency", "investment", "lifetime"]
+    costs = prepare_costs_all_years(years)
+    costs_dea = pd.concat(
+            [
+                costs[year][quantities].stack()
+                .rename(year)
+                for year in years
+            ],
+            axis=1,
+        )
+    costs_dea.rename(nice_name, level=0, inplace=True)
+    final = costs_dea.drop(to_drop, level=0)
+    final = final[final.sum(axis=1)!=0]
+    to_drop = final.loc[final.index.get_level_values(1)=="efficiency",:][(final.loc[final.index.get_level_values(1)=="efficiency",:]==1).all(axis=1)].index
+    final.drop(to_drop, inplace=True)
+    final.loc[final.index.get_level_values(1)=="investment"] /= 1e3
+    final.rename(lambda x: x.replace("offwind", "Offshore wind"), level=0, inplace=True)
+    final.rename(lambda x: x[0].upper() + x[1:], level=0, inplace=True)
+    final.sort_index(inplace=True)
+    final.loc[final.index.get_level_values(1)=="efficiency"]*=100
+    final = round(final).astype(int)
+    a = final.to_latex()
 
 #%%
 if "snakemake" not in globals():

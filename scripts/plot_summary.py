@@ -686,9 +686,11 @@ def plot_carbon_budget_distribution():
         label="EU commited target",
     )
 
+    ax1.axhline(y=0, linestyle="--")
     ax1.legend(
         fancybox=True, fontsize=18, loc=(1.1, 0.5), facecolor="white", frameon=True
     )
+
 
     plt.savefig(snakemake.output.co2_emissions, bbox_inches="tight")
 
@@ -1133,13 +1135,13 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        # with open('/home/lisa/mnt/lisa/learning_curve/results/offwind_lr_test/configs/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/config.yaml', encoding='utf8') as f:
+        # with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         #overwrite some options
@@ -1170,8 +1172,8 @@ if __name__ == "__main__":
         learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
         )
 
-        os.chdir("/home/lisa/Documents/learning_curve")
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        # os.chdir("/home/lisa/Documents/learning_curve")
+        os.chdir("/home/lisa/mnt/lisa/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"

@@ -692,14 +692,20 @@ def plot_series(network, carrier="AC", name="test"):
 
     supply =  supply.groupby(supply.columns, axis=1).sum()
 
+    y_max = supply.where(supply>0).sum(1).max() * 1.2
+
     plt.rcParams.update({'font.size': 12})
+    plt.style.use("default")
 
     for year in supply.index.levels[0]:
         fig, ax = plt.subplots()
         fig.set_size_inches((8, 5))
         fig.suptitle(year)
 
-        (supply.loc[year].loc[start:stop, new_columns]
+        a = supply.loc[year].loc[start:stop, new_columns]
+        a.index = a.index.map(lambda t: t.replace(year=year))
+
+        (a
          .plot(ax=ax, kind="area", stacked=True, linewidth=0.,
                color=[snakemake.config['plotting']['tech_colors'][i.replace(suffix, "")]
                       for i in new_columns]))
@@ -717,10 +723,10 @@ def plot_series(network, carrier="AC", name="test"):
                 new_handles.append(handles[i])
                 new_labels.append(labels[i])
 
-        ax.legend(new_handles, new_labels, ncol=4, loc="upper left",
+        ax.legend(new_handles, new_labels, ncol=3, loc="upper left",
                   frameon=False, prop={'size': 10})
-        ax.set_xlim([start, stop])
-        ax.set_ylim([-2500, 2500])
+        ax.set_xlim([start.replace("2013", str(year)), stop.replace("2013", str(year))])
+        ax.set_ylim([-y_max, y_max])
         ax.grid(True)
         ax.set_ylabel("Power [GW]")
         fig.tight_layout()
@@ -735,14 +741,14 @@ def plot_series(network, carrier="AC", name="test"):
 if __name__ == "__main__":
     if 'snakemake' not in globals():
         import os
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
         # "results/split_regions/configs/"
-        # with open('/home/lisa/Documents/learning_curve/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/mnt/lisa/learning_curve/results/oneEU_3learn_newupperbound/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p7/configs/config.yaml', encoding='utf8') as f:
+        # with open('/home/lisa/mnt/lisa/learning_curve/results/testing_must_run/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         sector_opts="Co2L-73sn-notarget-1p7-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0"
@@ -752,8 +758,8 @@ if __name__ == "__main__":
 
         map="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-costs-all.pdf".format(sector_opts),
         supply="results/" + snakemake.config['run'] +"/maps/elec_s_EU_{}-supply.pdf".format(sector_opts),)
-        # os.chdir("/home/lisa/Documents/learning_curve/")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        os.chdir("/home/lisa/Documents/learning_curve/")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/")
 #
     n = pypsa.Network(snakemake.input.network,
                       override_component_attrs=override_component_attrs)
