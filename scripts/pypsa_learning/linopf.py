@@ -1307,7 +1307,8 @@ def assign_solution(
             # for variables indexed with investment period not MultiIndex
             if not isinstance(df.index, pd.MultiIndex):
                 df = df.reindex(n.snapshots, level=0)
-            pnl[attr].loc[sns, :] = df.reindex(columns=pnl[attr].columns)
+            # pnl[attr].loc[sns, :] = df.reindex(columns=pnl[attr].columns)
+            pnl[attr].loc[sns, df.columns] = df
 
     pop = not keep_references
 
