@@ -160,24 +160,35 @@ def heat_must_run(n):
 
     profile1 = profile.reindex(columns=n.links.bus1)
     profile1.columns = n.links.index
+    profile1.drop(n.links[~n.links.p_nom_extendable].index, axis=1, inplace=True)
     profile1.dropna(axis=1, inplace=True)
     to_drop = profile1.columns[profile1.columns.str.contains("water tank")]
     profile1.drop(to_drop, inplace=True, axis=1)
 
-    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile1], axis=1).groupby(level=0, axis=1).min()
+    # n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile1], axis=1).groupby(level=0, axis=1).min()
+    n.links_t.p_min_pu[profile1.columns] = profile1
+    # n.links_t.p_max_pu[profile1.columns] = profile1
 
     profile2 = profile.reindex(columns=n.links.bus2)
     profile2.columns = n.links.index
+    profile2.drop(n.links[~n.links.p_nom_extendable].index, axis=1, inplace=True)
     profile2.dropna(axis=1, inplace=True)
     to_drop = profile2.columns[profile2.columns.str.contains("H2 Fuel Cell")]
     profile2.drop(to_drop, inplace=True, axis=1)
 
-    n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile2], axis=1).groupby(level=0, axis=1).min()
+    # n.links_t.p_max_pu = pd.concat([n.links_t.p_max_pu, profile2], axis=1).groupby(level=0, axis=1).min()
+    n.links_t.p_min_pu[profile2.columns] = profile2
+    # n.links_t.p_max_pu[profile2.columns] = profile2
 
     profile3 = profile.reindex(columns=n.generators.bus)
     profile3.columns = n.generators.index
+    profile3.drop(n.generators[~n.generators.p_nom_extendable].index, axis=1, inplace=True)
     profile3.dropna(axis=1, inplace=True)
-    n.generators_t.p_max_pu = pd.concat([n.generators_t.p_max_pu, profile3], axis=1).groupby(level=0, axis=1).min()
+    # n.generators_t.p_max_pu = pd.concat([n.generators_t.p_max_pu, profile3], axis=1).groupby(level=0, axis=1).min()
+    profile3 = pd.concat([n.generators_t.p_max_pu.reindex(columns=profile3.columns),
+                          profile3], axis=1).groupby(level=0, axis=1).min()
+    n.generators_t.p_min_pu[profile3.columns] = profile3
+    n.generators_t.p_max_pu[profile3.columns] = profile3
 
     return n
 
@@ -1336,7 +1347,7 @@ def add_carbon_neutral_constraint(n, snapshots):
             )
             # define_constraints(n, lhs, "==", rhs, "GlobalConstraint", "Co2Neutral",
             #                    axes=pd.Index([name]))
-            con = write_constraint(n, lhs, "==", rhs, axes=pd.Index([name]))
+            con = write_constraint(n, lhs, "<=", rhs, axes=pd.Index([name]))
             set_conref(n, con, "GlobalConstraint", "mu", name)
 
 
@@ -1544,9 +1555,32 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
     gas_boiler_cap = get_var(n, c, "p_nom").loc[gas_boiler_i]
     gas_boiler_cap_t = expand_series(gas_boiler_cap, snapshots).T
 
-    lhs = linexpr((-1, h2_p), (1, gas_boiler_cap_t.values), (-1, gas_boiler_p.values))
+    if snakemake.config["heat_must_run"]:
+        n.links_t.p_max_pu.drop(h2_i.union(gas_boiler_i), axis=1, inplace=True,
+                                errors="ignore")
+        n.links_t.p_min_pu.drop(h2_i.union(gas_boiler_i), axis=1, inplace=True,
+                                errors="ignore")
+        # heat profile
+        cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
+                                       & ~n.loads_t.p_set.columns.str.contains("industry")]
+        profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+        profile.rename(columns=n.loads.bus.to_dict(), inplace=True)
+
+        profile1 = profile.reindex(columns=n.links.bus1)
+        profile1.columns = n.links.index
+        profile1 = profile1[gas_boiler_i]
+
+        lhs = linexpr((-1, h2_p),
+                      (profile1.values, gas_boiler_cap_t.values),
+                      (-1, gas_boiler_p.values))
+
+
+    else:
+        lhs = linexpr((-1, h2_p), (1, gas_boiler_cap_t.values), (-1, gas_boiler_p.values))
     rhs = 0.0
     define_constraints(n, lhs, ">=", rhs, "Link", "retro_gasboiler")
+    if snakemake.config["heat_must_run"]:
+        define_constraints(n, lhs, "<=", rhs, "Link", "retro_gasboiler_lb")
 
 def add_retrofit_OCGT_constraint(n, snapshots):
     """Allow retrofitting of existing gas boilers to H2 boilers"""
@@ -1825,9 +1859,20 @@ def seqlopf(
                                                                     c0.loc[carrier],
                                                                     initial_cum_cap.loc[carrier]))
         # (a) average cost paid per MW -> exaclty on learning curve (ATTENTION: this is NOT the same as investment costs (c)!)
-        cost_av = round(cumulative_cost.diff(axis=1)).div(round(cum_p_nom.diff(axis=1)).replace(0, np.nan))
+        diff = cum_p_nom.diff(axis=1)
+        diff.where(diff>5, other=0., inplace=True)
+        cost_av = round(cumulative_cost.diff(axis=1)).div(diff.replace(0, np.nan))
+        if (cost_av>expand_series(c0, cost_av.columns)).any(axis=None):
+            breakpoint()
+            tech_wrong = cost_av.index[(cost_av>expand_series(c0, cost_av.columns)).any(axis=1)]
+            year_wrong = cost_av.columns[(cost_av>expand_series(c0, cost_av.columns)).any(axis=0)]
+            logger.warning("average costs larger than c0 for {} \n  cum_p_nom {} \n cost av {} \n c0 {}".format(c, cum_p_nom.loc[tech_wrong, year_wrong], cost_av.loc[tech_wrong, year_wrong], c0.loc[tech_wrong]))
+            cost_av.loc[tech_wrong, year_wrong] = c0.loc[tech_wrong]
+
         cost_av[0] = c0
         cost_av = cost_av.fillna(method="ffill", axis=1)
+        if (cost_av.diff(axis=1)>0).any(axis=None):
+            breakpoint()
 
         # (b) investment costs by piecewise linearisation
         x_high = n.carriers.loc[learn_carriers, "max_capacity"]
@@ -1861,6 +1906,8 @@ def seqlopf(
             ),
             axis=1,
         )
+
+
         # averaged paid costs
         cost_av = pd.Series(
             n.df(c).set_index(["carrier", "build_year"]).index.map(cost_av.stack()),
@@ -1874,8 +1921,8 @@ def seqlopf(
         # add costs without learning
         if "nolearning_cost" in n.df(c).columns:
             cost_plinear.loc[assets.index] += n.df(c).loc[assets.index, "nolearning_cost"].fillna(0)
-
-        return cost_plinear
+            cost_av.loc[assets.index] += n.df(c).loc[assets.index, "nolearning_cost"].fillna(0)
+        return cost_av
 
     def update_cost_params(n, prev, time_delay):
         """Update cost parameters according to installed capacities."""
@@ -2034,7 +2081,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-143sn-learnoffwindp0-learnsolarp0-learnH2xElectrolysisp0-learnonwindp0-seqcost",
+            sector_opts="Co2L-2p0-73sn-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
             clusters="37",
         )
 
@@ -2212,7 +2259,7 @@ if __name__ == "__main__":
             seqlopf(
                 n,
                 min_iterations=4,
-                max_iterations=6,
+                max_iterations=10,
                 track_iterations=True,
                 msq_threshold=0.05,
                 extra_functionality=extra_functionality,
