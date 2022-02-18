@@ -1371,8 +1371,8 @@ def assign_solution(
                             axis=1,
                         )
                     )
-                    if "nolearning_cost" in n.df(comp).columns:
-                        offwind_i = n.df(comp)[n.df(comp).p_nom_extendable & (~n.df(comp).nolearning_cost.isna())].index
+                    if all(np.isin([attribute+"_extendable", "nolearning_cost"], n.df(comp).columns)):
+                        offwind_i = n.df(comp)[n.df(comp)[attribute+"_extendable"] & (~n.df(comp).nolearning_cost.isna())].index
                         offwind_i = offwind_i.intersection(learn_assets)
                         logger.info("Add back connection costs which do not "
                                     "underly learning for carriers {}.\n".format(n.df(comp).loc[offwind_i,"carrier"].unique()))
