@@ -1,4 +1,4 @@
-run: "testing_seqlopf"
+run: "test_transport_scenarios"
 
 logging:
   level: INFO
@@ -7,7 +7,7 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73sn-notarget-1p5-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-1p5-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-1p7-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost,Co2L-73sn-notarget-1p5-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost, Co2L-73sn-notarget-2p0-learnH2xElectrolysismp10-learnoffwindmp10-learnonwindmp10-learnsolarmp10-seqcost, Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnoffwindp0-learnonwindp0-learnsolarp0-seqcost]
+  sector_opts: [Co2L-1p5-notarget-5p24h-transportfast, Co2L-1p5-notarget-5p24h, Co2L-1p5-notarget-5p24h-transportslow, Co2L-2p0-notarget-5p24h-transportfast, Co2L-2p0-notarget-5p24h, Co2L-2p0-notarget-5p24h-transportslow]
   investment_periods: [2020, 2025, 2030, 2040, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
@@ -91,18 +91,28 @@ sector:
   electricity_grid_connection: True
   # TRANSPORT ------------------------------------------------------------
   'bev_dsm' : True #turns on EV battery
+  'bev_charge_rate': 0.11
   'bev_availability' : 0.5  #How many cars do smart charging
+  'bev_energy': 0.05
   'v2g' : True #allows feed-in to grid from EV battery
   #what is not EV or FCEV is oil-fuelled ICE
-  'land_transport_fuel_cell_share': # 1 means all FCEVs
+  land_transport_fuel_cell_share: # 0.15 # 1 means all FCEVs
     2020: 0
+    2025: 0.025
     2030: 0.05
+    2035: 0.075
     2040: 0.1
+    2045: 0.125
     2050: 0.15
-  'land_transport_electric_share': # 1 means all EVs
+  land_transport_electric_share: # 0.85 # 1 means all EVs
     2020: 0
-    2030: 0.25
+    2025: 0.1
+    2030: 0.25    # TODO EU currenlty aims for ~10%
+    # total cars Europe: 303e6 https://www.statista.com/statistics/452449/european-countries-number-of-registered-passenger-cars/
+    # aim EU: 30e6 https://www.reuters.com/article/us-climate-change-eu-transport-idUSKBN28E2KM
+    2035: 0.425
     2040: 0.6
+    2045: 0.725
     2050: 0.85
   'transport_fuel_cell_efficiency': 0.5
   'transport_internal_combustion_efficiency': 0.3

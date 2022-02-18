@@ -55,6 +55,8 @@ rule set_opts_and_solve:
         global_capacity="data/global_capacities.csv",
         local_capacity="data/local_capacities.csv",
         transport="data/transport/transport.csv",
+        transport_scenarios="data/transport/transport_scenarios.csv",
+        nodal_transport_data="data/transport/nodal_transport_data.csv",
         biomass_potentials='data/biomass_potentials.csv',
         industrial_demand="data/industrial_demand.csv",
         nodal_energy_totals="data/nodal_energy_totals.csv",

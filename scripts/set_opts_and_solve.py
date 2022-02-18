@@ -986,6 +986,7 @@ def set_scenario_opts(n, opts):
                         "------------------------------------------------\n".format(new_costs))
             n.links.loc[smr_i, "capital_cost"] = n.links.loc[smr_i, "build_year"].map(new_costs)
 
+
     if "local" in opts:
         learn_i = n.carriers[n.carriers.learning_rate != 0].index
         n.carriers.loc[learn_i, "global_factor"] = 1.0
@@ -2163,6 +2164,97 @@ def island_hydrogen_production(n, export=False, compete=False):
             p_nom_extendable=True,
             lifetime=costs[year].at['battery inverter', 'lifetime']
         )
+
+
+def cycling_shift(df, steps=1):
+    """Cyclic shift on index of pd.Series|pd.DataFrame by number of steps"""
+    df = df.copy()
+    new_index = np.roll(df.index, steps)
+    df.values[:] = df.reindex(index=new_index).values
+    return df
+
+def modify_transport_scenario(n, scenario):
+    transport_scenario = pd.read_csv(snakemake.input.transport_scenarios,
+                                     index_col=[0], header=[0,1])
+    if scenario not in transport_scenario.columns.levels[0]:
+        logger.warning("transport scenario not found in csv, keep default transport shares assumptions.\n")
+        return
+    # shares
+    logger.info("set transport scenario {}".format(scenario))
+    fuel_cell_share = transport_scenario[scenario]["land_transport_fuel_cell_share"]
+    electric_share = transport_scenario[scenario]["land_transport_electric_share"]
+    ice_share = 1 - fuel_cell_share - electric_share
+    logger.info("Transport shares \n {}".format(transport_scenario[scenario].to_markdown()))
+
+    # transport data
+    transport = pd.read_csv(snakemake.input.transport, index_col=0, parse_dates=True)
+    nodal_transport_data = pd.read_csv(snakemake.input.nodal_transport_data, index_col=0)
+
+    # costs
+    periods = n.investment_period_weightings.index
+    cost_folder = snakemake.input.costs
+    discount_rate = snakemake.config["costs"]["discountrate"]
+    lifetime = snakemake.config["costs"]["lifetime"]
+    costs = prepare_costs_all_years(
+        periods, True, cost_folder, discount_rate, lifetime
+    )
+
+    nodes = n.buses[n.buses.carrier=="AC"].index
+
+    # EV --------------------------
+    # load
+    periods = n.investment_period_weightings.index
+    base_load = (transport[nodes] + cycling_shift(transport[nodes], 1) +
+                 cycling_shift(transport[nodes], 2)) / 3
+    load_ev = pd.concat([pd.concat([base_load.mul(electric_share[year])], keys=[year])
+                         for year in periods])
+    load_ev.columns = n.loads_t.p_set.loc[:, n.loads.carrier=="land transport EV"].columns
+    n.loads_t.p_set.loc[:, n.loads.carrier=="land transport EV"] = load_ev
+
+    # p nom
+    p_nom = electric_share.apply(lambda x: x*nodal_transport_data["number cars"] *
+                                 snakemake.config["sector"]["bev_charge_rate"])
+    p_nom =  p_nom.rename(columns=lambda x: x + " low voltage").stack()
+    # BEV charger
+    wished_order = n.links[n.links.carrier=="BEV charger"].set_index(["build_year", "bus0"]).index
+    p_nom_sort =  p_nom.reindex(wished_order)
+    p_nom_sort.index = n.links[n.links.carrier=="BEV charger"].index
+    n.links.loc[p_nom_sort.index, "p_nom"] = p_nom_sort
+    # V2G
+    if not n.links[n.links.carrier=="V2G"].index.empty:
+        n.links.loc[p_nom_sort.index.str.replace("BEV charger", "V2G"), "p_nom"] = p_nom_sort.rename(lambda x: x.replace("BEV charger", "V2G"))
+    # BEV DSM
+    if not n.stores[n.stores.carrier=="battery storage"].index.empty:
+        e_nom = electric_share.apply(lambda x: x*nodal_transport_data["number cars"]
+                                      *  snakemake.config["sector"]["bev_energy"]
+                                      *  snakemake.config["sector"]["bev_availability"])
+        e_nom = e_nom.rename(columns=lambda x: x + " EV battery").stack()
+        wished_order = n.stores[n.stores.carrier=="battery storage"].set_index(["build_year", "bus"]).index
+        e_nom_sort =  e_nom.reindex(wished_order)
+        e_nom_sort.index = n.stores[n.stores.carrier=="battery storage"].index
+        n.stores.loc[e_nom_sort.index, "e_nom"] = e_nom_sort
+
+    # FCEV ---------------------------------
+    base_load = 1/snakemake.config["sector"]["transport_fuel_cell_efficiency"] * transport[nodes]
+    load_fcev = pd.concat([pd.concat([base_load.mul(fuel_cell_share[year])], keys=[year])
+                         for year in periods])
+    load_fcev.columns = n.loads_t.p_set.loc[:, n.loads.carrier=="land transport fuel cell"].columns
+    n.loads_t.p_set.loc[:, n.loads.carrier=="land transport fuel cell"] = load_fcev
+
+    # ICE ----------------------------------
+    ice_efficiency = snakemake.config["sector"]['transport_internal_combustion_efficiency']
+    base_load = 1/ice_efficiency * transport[nodes]
+    load_ice = pd.concat([pd.concat([base_load.mul(ice_share[year])], keys=[year])
+                         for year in periods])
+    # special case since load is grouped by bus and land transport oil all have the same bus
+    load_ice = pd.DataFrame(load_ice.sum(axis=1), columns=n.loads_t.p_set.loc[:, n.loads.carrier=="land transport oil"].columns)
+    n.loads_t.p_set.loc[:, n.loads.carrier=="land transport oil"] = load_ice
+    # ICE emission
+    co2 = ice_share / ice_efficiency * transport[nodes].sum().sum() / 8760 * costs[2020].at["oil", "CO2 intensity"]
+    emissions = pd.DataFrame(-co2.reindex(n.snapshots, level=0), columns=n.loads[n.loads.carrier=="land transport oil emissions"].index)
+    n.loads_t.p_set.loc[:,n.loads.carrier=="land transport oil emissions"] = emissions
+
+    return n
 #%%
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -2173,7 +2265,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-1p5-notarget-5p24h-learnbatteryxchargerp0-learnbatteryp0-h2island", #"-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
+            sector_opts="Co2L-1p5-notarget-5p24h-transportfast", #"-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
             clusters="37",
         )
 
@@ -2191,6 +2283,9 @@ if __name__ == "__main__":
     co2_i = n.stores[n.stores.carrier=="co2 stored"].index
     n.stores.loc[co2_i, "e_nom_max"] = 200e6
 
+    if any(["transport" in o for o in opts]):
+        transport_scenario = [o for o in opts if "transport" in o][0]
+        n = modify_transport_scenario(n, transport_scenario)
     if snakemake.config["cluster_heat_nodes"]:
         n = cluster_heat_buses(n)
     # cluster network spatially to one node
