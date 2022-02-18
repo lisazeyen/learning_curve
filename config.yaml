@@ -43,7 +43,7 @@ temporal_presolve: None # 73sn
 # periods are considered for cost reduction
 time_delay: True
 # constraint capacity to speed up optimisation
-capacity_constraint: True
+capacity_constraint: False
 
 learning_technologies:
   Generator: []  # solar, onwind, offwind-ac, offwind-dc

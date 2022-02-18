@@ -1124,7 +1124,7 @@ if __name__ == "__main__":
         import yaml
         snakemake = Dict()
         with open('/home/lisa/mnt/lisa/learning_curve/config.yaml', encoding='utf8') as f:
-        # with open("/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml", encoding='utf8') as f:
+        # with open("/home/lisa/Documents/learning_curve/results/testing_seqlopf/configs/config.yaml", encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         snakemake.input = Dict()
@@ -1140,7 +1140,8 @@ if __name__ == "__main__":
 
         snakemake.config["scenario"]["sector_opts"] = []
         # "/home/lisa/Documents/learning_curve/results/"
-        for file in os.listdir( "/home/lisa/Documents/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
+        for file in os.listdir( "/home/lisa/mnt/lisa/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
+        # for file in os.listdir( "/home/lisa/Documents/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
             if file.endswith(".nc"):
                 label = file.replace('elec_s_EU_', '')[:-3]
                 snakemake.config["scenario"]["sector_opts"].append(label)

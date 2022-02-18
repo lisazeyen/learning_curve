@@ -1141,7 +1141,7 @@ if __name__ == "__main__":
         import yaml
         snakemake = Dict()
         with open('/home/lisa/mnt/lisa/learning_curve/config.yaml', encoding='utf8') as f:
-        # with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p5/configs/config.yaml', encoding='utf8') as f:
+        # with open('/home/lisa/Documents/learning_curve/results/testing_seqlopf/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         #overwrite some options
