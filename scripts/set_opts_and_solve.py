@@ -2071,6 +2071,98 @@ def add_conv_generators(n, carrier):
         n.links.loc["{}-{}".format(carrier, year), "location"] = conv_df.location[0]
     return n
 
+
+def island_hydrogen_production(n, export=False, compete=False):
+    logger.info("Islanding hydrogen production")
+
+    electrolysers = n.links.index[n.links.carrier == "H2 Electrolysis"]
+    nodes = pd.Index(n.links.bus0[electrolysers].unique())
+
+    n.madd("Bus",
+           nodes + " electricity for hydrogen",
+           location=nodes,
+           carrier="electricity for hydrogen"
+           )
+
+    if export:
+        print("Adding electricity export from hydrogen island")
+        n.madd("Link",
+               nodes + " export electricity from hydrogen island",
+               bus0=nodes + " electricity for hydrogen",
+               bus1=nodes,
+               carrier="export electricity from hydrogen island",
+               p_nom=1e6
+               )
+
+    if compete:
+        n.links = pd.concat((n.links,n.links.loc[electrolysers].rename(lambda name: name + " for hydrogen")))
+        n.links.loc[electrolysers + " for hydrogen","bus0"] += " electricity for hydrogen"
+        # n.links.loc[electrolysers + " for hydrogen","carrier"] += " for hydrogen"
+    else:
+        n.links.loc[electrolysers,"bus0"] += " electricity for hydrogen"
+
+    vre = n.generators.index[n.generators.carrier.isin(["onwind","solar","offwind-ac","offwind-dc", "offwind"]) & n.generators.p_nom_extendable]
+
+    n.generators = pd.concat((n.generators,n.generators.loc[vre].rename(lambda name: name + " for hydrogen")))
+
+    n.generators.loc[vre + " for hydrogen","bus"] += " electricity for hydrogen"
+    # n.generators.loc[vre + " for hydrogen","carrier"] += " for hydrogen"
+
+    n.generators_t.p_max_pu = pd.concat((n.generators_t.p_max_pu,n.generators_t.p_max_pu[vre].rename(lambda name: name + " for hydrogen",axis=1)),axis=1)
+    #NB: Also have taken care of joint p_nom_max in extra_functionality between competing generation at each node
+
+    # subtract upstream distribution grid costs added in add_electricity_grid_connection
+    periods = n.investment_period_weightings.index
+    cost_folder = snakemake.input.costs
+    discount_rate = snakemake.config["costs"]["discountrate"]
+    lifetime = snakemake.config["costs"]["lifetime"]
+    costs = prepare_costs_all_years(
+        periods, True, cost_folder, discount_rate, lifetime
+    )
+    onshore_hydrogen_vre = n.generators.index[n.generators.carrier.isin(["onwind","solar"]) & (n.generators.bus.str.contains("electricity for hydrogen"))]
+    n.generators.loc[onshore_hydrogen_vre, "capital_cost"] -= costs[2020].at['electricity grid connection', 'fixed']
+    n.generators.loc[onshore_hydrogen_vre, "nolearning_cost"] = 0.
+
+    n.madd("Bus",
+        nodes + " battery for hydrogen",
+        location=nodes,
+        carrier="battery"
+    )
+
+    for year in costs.keys():
+        n.madd("Store",
+            nodes + " battery for hydrogen-{}".format(year),
+            bus=nodes + " battery for hydrogen",
+            e_cyclic=True,
+            e_nom_extendable=True,
+            build_year=year,
+            carrier="battery",
+            capital_cost=costs[year].at['battery storage', 'fixed'],
+            lifetime=costs[year].at['battery storage', 'lifetime']
+        )
+
+        n.madd("Link",
+            nodes + " battery charger for hydrogen-{}".format(year),
+            bus0=nodes + " electricity for hydrogen",
+            bus1=nodes + " battery for hydrogen",
+            carrier="battery charger",
+            build_year=year,
+            efficiency=costs[year].at['battery inverter', 'efficiency']**0.5,
+            capital_cost=costs[year].at['battery inverter', 'fixed'],
+            p_nom_extendable=True,
+            lifetime=costs[year].at['battery inverter', 'lifetime']
+        )
+
+        n.madd("Link",
+            nodes + " battery discharger for hydrogen-{}".format(year),
+            bus0=nodes + " battery for hydrogen",
+            bus1=nodes + " electricity for hydrogen",
+            carrier="battery discharger",
+            build_year=year,
+            efficiency=costs[year].at['battery inverter', 'efficiency']**0.5,
+            p_nom_extendable=True,
+            lifetime=costs[year].at['battery inverter', 'lifetime']
+        )
 #%%
 if __name__ == "__main__":
     if "snakemake" not in globals():
@@ -2081,7 +2173,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-2p0-73sn-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
+            sector_opts="Co2L-1p5-notarget-5p24h-learnbatteryxchargerp0-learnbatteryp0-h2island", #"-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
             clusters="37",
         )
 
@@ -2092,6 +2184,8 @@ if __name__ == "__main__":
     n = pypsa.Network(
         snakemake.input.network, override_component_attrs=override_component_attrs
     )
+    # TODO
+    snakemake.config["co2_budget"]["1p5"] = 30
 
     # fix for current pypsa-eur-sec version
     co2_i = n.stores[n.stores.carrier=="co2 stored"].index
@@ -2162,6 +2256,14 @@ if __name__ == "__main__":
 
     # for carrier in ["nuclear", "lignite", "coal", "CCGT"]:
     #     n = add_conv_generators(n, carrier)
+
+    # drop co2 vent
+    logger.info("Remove co2 vent.")
+    vent_i = n.links[n.links.carrier=="co2 vent"].index
+    n.mremove("Link", vent_i)
+
+    if "h2island" in opts:
+        island_hydrogen_production(n, export=False, compete=False)
 
     #%%
     with memory_logger(
