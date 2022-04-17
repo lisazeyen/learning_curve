@@ -113,6 +113,7 @@ def learning_consistency_check(n):
         (iii) for learning carriers there are also assets with extendable
         capacity
     """
+    # TODO add warning if not asset for each investment period
     # check if there are any technologies with learning
     learn_i = n.carriers[n.carriers.learning_rate != 0].index
     if learn_i.empty:
