@@ -1352,6 +1352,8 @@ def assign_solution(
                     n.carriers.loc[learn_i, "initial_cost"], inplace=True
                 )
                 capital_cost.fillna(method="ffill", inplace=True)
+                # remove errors because of very small investment per period costs
+                capital_cost = capital_cost[capital_cost.diff()<=0].fillna(capital_cost.shift().fillna(capital_cost.iloc[0,:]))
                 for comp, attribute in nominal_attrs.items():
                     ext_i = get_extendable_i(n, comp)
                     if "carrier" not in n.df(comp) or n.df(comp).empty:
