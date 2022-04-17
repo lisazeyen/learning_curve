@@ -156,6 +156,8 @@ def heat_must_run(n):
     cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
                                    & ~n.loads_t.p_set.columns.str.contains("industry")]
     profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+    # if maximum value is 0
+    profile.fillna(0, inplace=True)
     profile.rename(columns=n.loads.bus.to_dict(), inplace=True)
 
     profile1 = profile.reindex(columns=n.links.bus1)
@@ -846,6 +848,9 @@ def prepare_data(gf_default=0.3):
         .fillna(gf_default)
         .iloc[:, 0]
     )
+    # TODO
+    global_factor.loc["SMR CC"] = 0.3
+    global_capacity.loc["SMR CC"] = 1e4
 
     return (global_capacity, p_nom_max_limit, global_factor)
 
@@ -935,9 +940,9 @@ def set_scenario_opts(n, opts):
                 if tech == "DAC":
                     n.carriers.loc["DAC", "max_capacity"] = 200e3 / factor
                 if tech == "solar":
-                    n.carriers.loc["solar", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["solar", "max_capacity"] = 4e6 / factor
                 if tech == "onwind":
-                    n.carriers.loc["onwind", "max_capacity"] = 3e6 / factor
+                    n.carriers.loc["onwind", "max_capacity"] = 4e6 / factor
                 if tech == "offwind":
                     n.carriers.loc["offwind", "max_capacity"] = 3.5e6 / factor
                 if tech == "battery":
@@ -1127,6 +1132,8 @@ def set_carbon_constraints(n):
             constant=0,
         )
 
+    emissions_1990 = 4.53693
+    emissions_2019 = 3.344096
     logger.info("add minimum emissions for {} ".format(n.snapshots.levels[0][0]))
     n.add(
         "GlobalConstraint",
@@ -1135,7 +1142,10 @@ def set_carbon_constraints(n):
         carrier_attribute="co2_emissions",
         sense=">=",
         investment_period=n.snapshots.levels[0][0],
-        constant=3.2e9,
+        # emission declined by 5.8% due to Corona in 2020
+        # https://www.iea.org/reports/global-energy-review-2021/co2-emissions
+        # set this as minimum
+        constant=0.952 * emissions_2019*1e9,# before 3.2e9, myopic 3.559e9 with 1.5b
     )
 
 
@@ -1164,8 +1174,6 @@ def set_carbon_constraints(n):
 
     if not "notarget" in opts:
         logger.info("add CO2 targets.")
-        emissions_1990 = 4.53693
-        emissions_2019 = 3.344096
 
         logger.info("add carbon target of {} Gt for 2020 to stay below 2019 emissions".format(emissions_2019))
         n.add(
@@ -1236,6 +1244,25 @@ def set_max_growth(n):
     n.carriers.loc["onwind", "max_growth"] = 60 * 1e3  # 40 * 1e3
     # offshore max grow so far 3.5 GW in Europe https://windeurope.org/about-wind/statistics/offshore/european-offshore-wind-industry-key-trends-statistics-2019/
     n.carriers.loc[["offwind-ac", "offwind-dc"], "max_growth"] = 15 * 1e3  # 8.75 * 1e3
+
+    # share of German population is 15.85% (based on pop_layout)
+    DE_share =  0.158479
+    # PV ###
+    # based on German maximum growth multiplied by population share
+    # PV maximum growth in Germany 8.2 GW in 2012
+    # https://www.iea.org/articles/renewables-2020-data-explorer?mode=market&region=Germany&product=PV
+    n.carriers.loc["solar", "max_growth"] = 8.2 * 1e3 / DE_share
+
+    # Onshore wind ###
+    # onshore wind maximum growth in Germany 4.9 GW between 2017
+    # https://www.iea.org/articles/renewables-2020-data-explorer?mode=market&region=Germany&product=Onshore+wind
+    n.carriers.loc["onwind", "max_growth"] = 4.9 * 1e3 / DE_share
+
+    # Offshore wind ####
+    # offshore wind maximum growth in Germany 2.08 GW between 2015
+    # https://www.iea.org/articles/renewables-2020-data-explorer?mode=market&region=Germany&product=Offshore+wind
+    n.carriers.loc[["offwind-ac", "offwind-dc"], "max_growth"] = 2.08 * 1e3/ DE_share
+
 
     return n
 
@@ -1864,7 +1891,6 @@ def seqlopf(
         diff.where(diff>5, other=0., inplace=True)
         cost_av = round(cumulative_cost.diff(axis=1)).div(diff.replace(0, np.nan))
         if (cost_av>expand_series(c0, cost_av.columns)).any(axis=None):
-            breakpoint()
             tech_wrong = cost_av.index[(cost_av>expand_series(c0, cost_av.columns)).any(axis=1)]
             year_wrong = cost_av.columns[(cost_av>expand_series(c0, cost_av.columns)).any(axis=0)]
             logger.warning("average costs larger than c0 for {} \n  cum_p_nom {} \n cost av {} \n c0 {}".format(c, cum_p_nom.loc[tech_wrong, year_wrong], cost_av.loc[tech_wrong, year_wrong], c0.loc[tech_wrong]))
@@ -1872,8 +1898,10 @@ def seqlopf(
 
         cost_av[0] = c0
         cost_av = cost_av.fillna(method="ffill", axis=1)
-        if (cost_av.diff(axis=1)>0).any(axis=None):
-            breakpoint()
+        if (round(cost_av.diff(axis=1))>0).any(axis=None):
+            logger.warning("investment costa are increasing")
+            # remove errors because of very small investment per period costs
+            cost_av = cost_av[cost_av.diff()<=0].fillna(cost_av.shift().fillna(cost_av.iloc[0,:]))
 
         # (b) investment costs by piecewise linearisation
         x_high = n.carriers.loc[learn_carriers, "max_capacity"]
@@ -2039,6 +2067,8 @@ def remove_techs_for_speed(n):
               'urban decentral solar thermal', 'rural solar thermal',
               'urban central solid biomass CHP CC',
               'urban central gas CHP CC', 'solid biomass for industry CC']
+    learn_i = n.carriers[n.carriers.learning_rate!=0].index
+    remove = [carrier for carrier in remove if carrier not in learn_i]
     first_years = n.snapshots.levels[0][n.snapshots.levels[0]<2040]
     for c in ["Generator", "Store", "Link", "Line"]:
         if "carrier" not in n.df(c).columns: continue
@@ -2265,7 +2295,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-1p5-notarget-5p24h-transportfast", #"-learnH2xElectrolysisp10-learnoffwindp10-learnonwindp10-learnsolarp10-seqcost",
+            sector_opts="Co2L-1p5-notarget-146sn",
             clusters="37",
         )
 
@@ -2277,7 +2307,7 @@ if __name__ == "__main__":
         snakemake.input.network, override_component_attrs=override_component_attrs
     )
     # TODO
-    snakemake.config["co2_budget"]["1p5"] = 30
+    # snakemake.config["co2_budget"]["1p5"] = 34.2
 
     # fix for current pypsa-eur-sec version
     co2_i = n.stores[n.stores.carrier=="co2 stored"].index
@@ -2318,10 +2348,34 @@ if __name__ == "__main__":
     if snakemake.config["limit_growth_lb"]:
         n = set_min_growth(n)
 
+    if "BAU" in opts:
+        emissions_1990 = 4.53693
+        emissions_2019 = 3.344096
+        logger.info("add minimum emissions for {} ".format(n.snapshots.levels[0][0]))
+        n.add(
+            "GlobalConstraint",
+            "Co2min",
+            type="Co2min",
+            carrier_attribute="co2_emissions",
+            sense=">=",
+            investment_period=n.snapshots.levels[0][0],
+            # emission declined by 5.8% due to Corona in 2020
+            # https://www.iea.org/reports/global-energy-review-2021/co2-emissions
+            # set this as minimum
+            constant=0.952 * emissions_2019*1e9,# before 3.2e9, myopic 3.559e9 with 1.5b
+        )
+
     # TODO
     # extend lifetime of nuclear power plants to 60 years
     nuclear_i = n.links[n.links.carrier == "nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.0
+    # add extendable nuclear generators
+    df = n.links.loc[nuclear_i].reset_index().groupby("bus1").first().set_index("name")
+    df = pd.concat([df.rename(index= lambda x: x.split("-")[0]+"-"+str(year)) for year in years])
+    df["build_year"] = df.reset_index().name.apply(lambda x: int(x.split("-")[1])).values
+    df["p_nom"] = 0.
+    df["p_nom_extendable"] = True
+    import_components_from_dataframe(n, df, "Link")
 
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
