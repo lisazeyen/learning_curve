@@ -1,4 +1,4 @@
-run: "test_transport_scenarios"
+run: "new_growthlimit"
 
 logging:
   level: INFO
@@ -7,8 +7,8 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-1p5-notarget-5p24h-transportfast, Co2L-1p5-notarget-5p24h, Co2L-1p5-notarget-5p24h-transportslow, Co2L-2p0-notarget-5p24h-transportfast, Co2L-2p0-notarget-5p24h, Co2L-2p0-notarget-5p24h-transportslow]
-  investment_periods: [2020, 2025, 2030, 2040, 2050]
+  sector_opts: [Co2L-5p24h-kmedoids-1p5-notarget, Co2L-5p24h-kmedoids-1p5-notarget-limitgrowth, Co2L-10p24h-kmedoids-1p5-notarget-limitgrowth,Co2L-20p24h-kmedoids-1p5-notarget-limitgrowth, Co2L-30p24h-kmedoids-1p5-notarget-limitgrowth, Co2L-5p24h-kmedoids-2p0-notarget, Co2L-5p24h-kmedoids-2p0-notarget-limitgrowth]
+  investment_periods: [2020, 2025, 2030, 2035, 2040, 2045, 2050]
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
@@ -58,6 +58,7 @@ learning_rates:
   offwind: 0.10
   offshore-ac: 0.16  # Bloomberg New Energy Finance 2018, p.242 DEA
   offshore-dc: 0.16
+  SMR CC: 0.10
   H2 electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 Electrolysis: 0.16  # IRENA between 16-21% https://irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
   H2 fuel cell: 0.16
@@ -82,10 +83,10 @@ co2_budget:
   2045: 0.0322580645
   2050: 0
   # update of IPCC 6th AR compared to the 1.5SR. (discussed here: https://twitter.com/JoeriRogelj/status/1424743828339167233)
-  1p5 : 25.7 # Budget in Gt CO2 for 1.5 for Europe, global 420 Gt, assuming per capita share
+  1p5 : 34.2 # 25.7 # Budget in Gt CO2 for 1.5 for Europe, global 420 Gt, assuming per capita share
   1p6 : 35  # Budget in Gt CO2 for 1.6 for Europe, global 580 Gt
-  1p7 : 45  # Budget in Gt CO2 for 1.7 for Europe, global 800 Gt
-  2p0 : 73.9 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
+  1p7 : 51.4 # 45  # Budget in Gt CO2 for 1.7 for Europe, global 800 Gt
+  2p0 : 69.778 # 73.9 # Budget in Gt CO2 for 2 for Europe, global 1170 Gt
 
 sector:
   electricity_grid_connection: True
@@ -251,6 +252,7 @@ plotting:
     "lignite" : "#9e5a01"
     "oil" : "#262626"
     "H2" : "#ea048a"
+    "H2 for industry" : "#2e001b"
     "H2 Store" : "#ea048a"
     "H2 boiler" : "#fd7bc7"
     "H2 electrolysis" : "indigo"

@@ -1120,16 +1120,19 @@ if __name__ == "__main__":
         import os
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        run = "sensi_numberdays4"
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/config.yaml', encoding='utf8') as f:
-        # with open("/home/lisa/Documents/learning_curve/results/testing_seqlopf/configs/config.yaml", encoding='utf8') as f:
+        snakemake.config = Dict()
+        snakemake.config["run"] = run
+        with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        # with open("/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml".format(snakemake.config["run"]), encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
+        snakemake.config["run"] = run
         #overwrite some options
         snakemake.input = Dict()
         snakemake.input['costs'] = "data/costs/costs_2020.csv"
-        # snakemake.config["run"] = "newrates_73sn_1p7"
         snakemake.output = Dict()
         for item in outputs:
             snakemake.output[item] =  'results/{name}/csvs/{item}.csv'.format(name=snakemake.config['run'],item=item)

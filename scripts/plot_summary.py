@@ -58,6 +58,7 @@ def prepare_costs(cost_file, discount_rate, lifetime):
     """
     prepare cost data
     """
+
     # set all asset costs and other parameters
     costs = pd.read_csv(cost_file, index_col=list(range(2))).sort_index()
 
@@ -150,7 +151,13 @@ def rename_techs(label):
         "AC": "transmission lines",
         "DC": "transmission lines",
         "B2B": "transmission lines",
-        "H2": "hydrogen storage",
+        # "H2": "hydrogen storage",
+        "H2 for industry": "H2",
+        "land transport fuel cell": "H2",
+        "H2 for shipping": "H2",
+        "oil emissions": "co2",
+        "shipping oil emissions": "co2",
+        "land transport oil emissions": "co2"
     }
 
     for ptr in prefix_to_remove:
@@ -210,6 +217,14 @@ preferred_order = pd.Index(
     ]
 )
 
+rename_dict = {"Co2L-5p24h-2p0-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0": "endogen",
+               'BAU-5p24h-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost': "BAU-seqcost",
+               'BAU-5p24h-kmedoids-notarget-learnH2xElectrolysisp10-learnsolarp10-learnonwindp10-learnoffwindp10': "BAU-optimistic",
+               'BAU-5p24h-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0': "BAU",
+               'Co2L-10p24h-1p5-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost': "base",
+               'Co2L-10p24h-1p5-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-transportfast': "fast",
+               'Co2L-10p24h-1p5-kmedoids-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost-transportslow': "slow"}
+
 
 def plot_costs():
 
@@ -236,6 +251,10 @@ def plot_costs():
 
     print(df.sum())
 
+    df = df.droplevel(level=[0,1], axis=1)
+
+
+    df = df.rename(columns=rename_dict, level=0)
     new_index = preferred_order.intersection(df.index).append(
         df.index.difference(preferred_order)
     )
@@ -402,6 +421,8 @@ def plot_balances():
     balances["energy"] = [
         i for i in balances_df.index.levels[0] if i not in co2_carriers
     ]
+
+    balances_df.rename(columns=rename_dict,level=2, inplace=True)
 
     for k, v in balances.items():
 
@@ -592,6 +613,7 @@ def plot_carbon_budget_distribution():
     co2_emissions *= 1e-9
     # drop unnessary level
     co2_emissions_grouped = co2_emissions.droplevel(level=[0, 1], axis=1)
+    co2_emissions_grouped.rename(rename_dict, axis=1, inplace=True)
 
     # co2_emissions_grouped = co2_emissions.stack(0).groupby(level=1).sum().T
     # co2_emissions_grouped.index = [int(x) for x in co2_emissions_grouped.index]
@@ -735,6 +757,7 @@ def plot_capital_costs_learning():
     costs_dea.rename(index=lambda x: "DEA " + x, inplace=True)
 
     cost_learning = capital_cost.droplevel(level=[0,1], axis=1) / 1e3
+    cost_learning.rename(columns=rename_dict,level=0, inplace=True)
 
     for tech in learn_i:
         cols = len(cost_learning.stack().columns)
@@ -869,10 +892,11 @@ def learning_cost_vs_curve():
     for scenario in learn_carrier.columns:
         # sols -----------------------------------------------
         label = scenario[:-1]
-        filename = sols_dict[label]
-        print("---------------------------------\n")
-        print(label, filename)
+
         try:
+            filename = sols_dict[label]
+            print("---------------------------------\n")
+            print(label, filename)
             sols = pd.read_csv(filename, index_col=[0], header=[0, 1, 2])
 
             global_cum_check = (
@@ -895,7 +919,7 @@ def learning_cost_vs_curve():
             investment_cost.fillna(method="ffill", inplace=True)
             investment_cost.rename(index=lambda x: str(x), inplace=True)
 
-        except (OSError, pd.errors.ParserError):
+        except (OSError, pd.errors.ParserError, KeyError):
             sols = pd.DataFrame()
             check = pd.DataFrame()
             print(label, " not solved yet or sequential model.\n")
@@ -1135,16 +1159,20 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
+        run = "BAU-kmedoids"
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
-        with open('/home/lisa/mnt/lisa/learning_curve/config.yaml', encoding='utf8') as f:
-        # with open('/home/lisa/Documents/learning_curve/results/testing_seqlopf/configs/config.yaml', encoding='utf8') as f:
+        snakemake = Dict()
+        snakemake.config = Dict()
+        snakemake.config["run"] =  run
+        with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        # with open('/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
-        #overwrite some options
+        snakemake.config["run"] =  run
         snakemake.input = Dict(
         costs_csv="results"  + '/' + config['run'] + '/csvs/costs.csv',
         costs="data/costs/",
@@ -1172,8 +1200,9 @@ if __name__ == "__main__":
         learning_cost_vs_curve="results"  + '/' + config['run'] + '/graphs/learning_cost_vs_curve/learning_cost.pdf',
         )
 
-        # os.chdir("/home/lisa/Documents/learning_curve")
+        snakemake.config["run"] =  run
         os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        # os.chdir("/home/lisa/Documents/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"

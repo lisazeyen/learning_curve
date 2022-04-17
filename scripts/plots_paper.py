@@ -1098,10 +1098,11 @@ def plot_capital_costs_learning_methods():
 
             for sc in filters:
                 df = caps.loc[:,caps.columns.str.contains(sc)]
+                # df = df.drop(df.columns[(round(df.diff())>0).any()], axis=1)
                 if df.empty: continue
                 if not sc=="base":
                     scen =  df.loc[:, (df.columns.str.contains(scenario) & ~df.columns.str.contains("nogridcost"))]
-                    name = 'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP1'
+                    name = 'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP1-endogen'
                     if name in scen.columns:
                         scen = scen[[name]]
                     if len(scen.columns)==1:
@@ -1129,6 +1130,130 @@ def plot_capital_costs_learning_methods():
                         bbox_inches="tight")
 
 
+def plot_balances():
+
+    co2_carriers = ["co2", "co2 stored", "process emissions"]
+
+    balances_df_all = {}
+    for budget in budgets:
+
+        balances_df = pd.read_csv(path + "/newrates_73sn_{}/csvs/supply_energy.csv".format(budget),
+                                  index_col=list(range(3)), header=list(range(n_header))
+        )
+
+
+
+
+        balances = {i.replace(" ", "_"): [i] for i in balances_df.index.levels[0]}
+        balances["energy"] = [
+            i for i in balances_df.index.levels[0] if i not in co2_carriers
+        ]
+
+
+        balances_df = balances_df.droplevel(level=[0,1], axis=1)
+        balances_df_all[budget] = balances_df.loc[:,(balances_df.columns.get_level_values(0).str.contains("73sn")
+                                                        # & balances_df.columns.get_level_values(0).str.contains("notarget")
+                                        & ~ balances_df.columns.get_level_values(0).str.contains("nogridcost"))]
+    together = pd.concat(balances_df_all, axis=1)
+    # budget compare
+
+    scenarios_dict = {"endogen":  ['Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0',
+      'Co2L-73sn-notarget-1p7-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0',
+      'Co2L-73sn-notarget-2p0-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-MIP1'],
+                      "methods":  ['Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0',
+                        'Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost',
+                        'Co2L-73sn-1p5']
+                      }
+    for name,list_scenarios in scenarios_dict.items():
+        for k, v in balances.items():
+
+            df = together.loc[:,together.columns.get_level_values(1).isin(list_scenarios)].loc[v]
+            df = df.groupby(df.index.get_level_values(2)).sum()
+
+            # convert MWh to TWh
+            df = df / 1e6
+
+            # remove trailing link ports
+            df.index = [
+                i[:-1]
+                if ((i not in ["co2", "H2"]) and (i[-1:] in ["0", "1", "2", "3"]))
+                else i
+                for i in df.index
+            ]
+
+
+            df = df.groupby(df.index.map(rename_techs)).sum()
+
+            to_drop = df.index[
+                df.abs().max(axis=1) < 0.5
+            ]
+
+            print("dropping")
+
+            print(df.loc[to_drop])
+
+            df = df.drop(to_drop)
+
+
+            print(df.sum())
+
+            if df.empty:
+                continue
+
+            df = df.groupby(df.index).sum()
+
+            new_index = preferred_order.intersection(df.index).append(
+                df.index.difference(preferred_order)
+            )
+            if name=="endogen":
+                df = df.droplevel(1, axis=1)
+            else:
+                df = df.droplevel(0, axis=1)
+                rename_dict = {'Co2L-73sn-1p5': "exogen",
+                               'Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0': "endogen",
+                               'Co2L-73sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-seqcost': "seqcost"}
+                df = df.rename(rename_dict, level=0, axis=1)
+                df = df.reindex(["endogen", "seqcost", "exogen"], level=0, axis=1)
+
+            # df = df.droplevel(level=[0,1], axis=1)
+            # df = df[wished]
+            new_columns = df.columns.sort_values()
+
+            fig, ax = plt.subplots()
+            fig.set_size_inches((12, 8))
+
+            df.loc[new_index, new_columns].T.plot(
+                kind="bar",
+                ax=ax,
+                stacked=True,
+                lw=0,
+                color=[snakemake.config["plotting"]["tech_colors"][i] for i in new_index],
+                title=name + " - " + k
+            )
+
+            ax.set_ylim([df[df < 0].sum().min() * 1.1, df[df > 0].sum().max() * 1.7])
+
+            ax.grid(axis="y", color="lightgrey")
+
+            handles, labels = ax.get_legend_handles_labels()
+
+            handles.reverse()
+            labels.reverse()
+
+            if v[0] in co2_carriers:
+                ax.set_ylabel("CO2 [MtCO2/a]")
+            else:
+                ax.set_ylabel("Energy [TWh/a]")
+
+            ax.set_xlabel("")
+
+            ax.legend(handles, labels, ncol=4, loc="upper left")
+
+            fig.savefig(
+                "/home/lisa/Documents/learning_curve/graphs_iew/balances/balances-" + k + name + ".pdf",
+                transparent=True,
+                bbox_inches="tight",
+            )
 
 def plot_duration_curve():
     for budget in budgets:
@@ -1320,3 +1445,33 @@ plot_capacities()
 plot_costs_methods()
 plot_capacities_methods()
 plot_carbon_budget_distribution_methods()
+
+import math
+def emission_const(x, e0, B, year_e0):
+    """calculate CO2 emission e_t with exponential decay.
+    Input:
+        x: year (int) (e.g. 2025)
+        e0: CO2 emissions in base year
+        B: Carbon budget
+
+    return:
+        e_t: emission in year x
+
+    """
+    # decay paramter
+    m = 2 / (B/e0)
+    # year t
+    t = x - year_e0
+    # e_t -> allowed emission in year t
+    e_t = e0*(1+m*t) * math.exp(-m*t)
+    return e_t
+
+# UNFCC v24
+e0 = 3.344
+year_e0 = 2019
+B = 25.7
+
+historical_emission = historical_emissions(cts.to_list())
+
+years = pd.Series([2020,2025,2030,2035,2040,2045,2050])
+years.apply(lambda x: emission_const(x, e0, B, year_e0)/historical_emission.loc[1990])
