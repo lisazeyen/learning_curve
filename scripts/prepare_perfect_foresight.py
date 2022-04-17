@@ -229,7 +229,7 @@ def concat_networks(years, with_time=True, snapshots=None, investment_periods=No
         network.lines["carrier"] = "AC"
 
         # TODO can be removed once lifetime and build_year defaults are aligned with new pypsa
-        for c in ["Generator", "Store", "Link", "Line"]:
+        for c in ["Generator", "Store", "Link", "Line", "StorageUnit"]:
             network.df(c)["build_year"].fillna(year, inplace=True)
             network.df(c)["lifetime"].fillna(np.inf, inplace=True)
 
@@ -242,7 +242,7 @@ def concat_networks(years, with_time=True, snapshots=None, investment_periods=No
             import_components_from_dataframe(n, missing, component.name)
         # (2) add generators, links, stores and loads
         for component in network.iterate_components(
-            ["Generator", "Link", "Store", "Load", "Line"]
+            ["Generator", "Link", "Store", "Load", "Line", "StorageUnit"]
         ):
 
             df_year = component.df.copy()
@@ -269,7 +269,7 @@ def concat_networks(years, with_time=True, snapshots=None, investment_periods=No
             for component in network.iterate_components():
                 pnl = getattr(n, component.list_name + "_t")
                 for k in iterkeys(component.pnl):
-                    if component.name in ["Generator", "Link", "Store", "Load", "Line"]:
+                    if component.name in ["Generator", "Link", "Store", "Load", "Line", "StorageUnit"]:
                         df_year = component.df
                         # assets which are build earlier
                         early_build_i, new_i = get_already_build(df_year)
@@ -714,7 +714,7 @@ def set_assets_without_multiinvestment():
         "coal",
         # "electricity distribution grid",
         "gas for industry",
-        "gas for industry CC",
+        # "gas for industry CC",
         "lignite",
         "DC",
         "nuclear",
@@ -722,7 +722,7 @@ def set_assets_without_multiinvestment():
         "process emissions",
         # "battery discharger",
         # "home battery discharger",
-        "process emissions CC",
+        # "process emissions CC",
         "residential rural water tanks charger",
         "residential rural water tanks discharger",
         "residential urban decentral water tanks charger",
@@ -732,7 +732,7 @@ def set_assets_without_multiinvestment():
         "services urban decentral water tanks charger",
         "services urban decentral water tanks discharger",
         "solid biomass for industry",
-        "solid biomass for industry CC",
+        # "solid biomass for industry CC",
         "urban central water tanks charger",
         "urban central water tanks discharger",
     ]
@@ -744,7 +744,7 @@ def set_assets_without_multiinvestment():
     # stores --------------------------------------------------------
     stores_fixed = [
         "co2",
-        "co2 stored",
+        # "co2 stored",
         "coal",
         "gas",
         "lignite",
@@ -753,6 +753,8 @@ def set_assets_without_multiinvestment():
         # "H2 Store",
     ]
     set_fixed_assets("Store", stores_fixed)
+
+    set_fixed_assets("StorageUnit", ['PHS', 'hydro'])
 
 
 # %%
@@ -797,7 +799,7 @@ if __name__ == "__main__":
     co2_i = n.stores[n.stores.carrier.isin(["co2", "co2 stored"])].index
     n.stores.loc[co2_i, "e_period"] = False
     # increase biomass potentials
-    store_i = n.stores[n.stores.carrier.isin(["biogas", "solid biomass"])].index
+    store_i = n.stores[n.stores.carrier.isin(["biogas", "solid biomass", "co2 stored"])].index
     time_weightings = n.stores.loc[store_i, "build_year"].map(
         n.investment_period_weightings["time_weightings"]
     )
