@@ -1120,7 +1120,7 @@ if __name__ == "__main__":
         import os
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        run = "sensi_numberdays4"
+        run = "high_t_25sn"
         from vresutils import Dict
         import yaml
         snakemake = Dict()

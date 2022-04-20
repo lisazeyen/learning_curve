@@ -1592,11 +1592,14 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
         cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
                                        & ~n.loads_t.p_set.columns.str.contains("industry")]
         profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+        # to deal if max value is zero
+        profile.fillna(0, inplace=True)
         profile.rename(columns=n.loads.bus.to_dict(), inplace=True)
 
         profile1 = profile.reindex(columns=n.links.bus1)
         profile1.columns = n.links.index
         profile1 = profile1[gas_boiler_i]
+        profile1.fillna(0,inplace=True)
 
         lhs = linexpr((-1, h2_p),
                       (profile1.values, gas_boiler_cap_t.values),
@@ -2370,7 +2373,7 @@ if __name__ == "__main__":
     nuclear_i = n.links[n.links.carrier == "nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.0
     # add extendable nuclear generators
-    df = n.links.loc[nuclear_i].reset_index().groupby("bus1").first().set_index("name")
+    df = n.links.loc[nuclear_i].reset_index().groupby("bus1").first().rename(columns={"index":"name"}).set_index("name")
     df = pd.concat([df.rename(index= lambda x: x.split("-")[0]+"-"+str(year)) for year in years])
     df["build_year"] = df.reset_index().name.apply(lambda x: int(x.split("-")[1])).values
     df["p_nom"] = 0.

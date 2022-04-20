@@ -53,7 +53,7 @@ pypsa_to_database = {
     "solar": "solar-utility",
 }
 
-#%%
+
 def prepare_costs(cost_file, discount_rate, lifetime):
     """
     prepare cost data
@@ -1159,7 +1159,7 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        run = "BAU-kmedoids"
+        run = "high_spatial"
         # os.chdir("/home/lisa/Documents/learning_curve/scripts")
         os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict

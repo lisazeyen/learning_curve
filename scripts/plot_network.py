@@ -207,7 +207,8 @@ def plot_map(network, components=["Link", "Store", "StorageUnit", "Generator"],
 
     for item in new_columns:
         if item not in snakemake.config['plotting']['tech_colors']:
-            print("Warning!",item,"not in config/plotting/tech_colors")
+            print("Warning!",item,"not in config/plotting/tech_colors, assign random color")
+            snakemake.config['plotting']['tech_colors'] = "pink"
 
     # hack because impossible to drop buses...
     if "DE0 0" in n.buses.index:
@@ -748,10 +749,10 @@ if __name__ == "__main__":
         snakemake = Dict()
         # "results/split_regions/configs/"
         # with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p7/configs/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/mnt/lisa/learning_curve/results/testing_must_run_3h/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/high_spatial/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
-        sector_opts="Co2L-30p24h-kmedoids-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0"
+        sector_opts="Co2L-25sn-notarget-1p5"
         snakemake.input = Dict()
         snakemake.input['network'] = "results/" + snakemake.config['run'] +"/postnetworks/elec_s_EU_{}.nc".format(sector_opts)
         snakemake.output = Dict(
