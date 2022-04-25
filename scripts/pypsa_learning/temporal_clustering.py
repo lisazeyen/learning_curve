@@ -22,6 +22,7 @@ import tsam.timeseriesaggregation as tsam
 
 from pyomo.environ import Var, NonNegativeReals
 from pypsa.opt import l_constraint
+import numpy as np
 
 
 
@@ -95,6 +96,83 @@ def aggregate_snapshots(n, n_periods=12, hours=24, normed=True, solver="glpk",
     # if overwrite_time_dfs:
     #     overwrite_time_dependent(n, timeseries_clustered)
 
+
+def apply_time_segmentation(n, segments, solver_name="cbc"):
+    """Aggregating time series to segments with different lengths
+
+    Input:
+        segments: number of segments in which the typical period should be
+                  subdivided
+
+
+
+
+    """
+    try:
+        import tsam.timeseriesaggregation as tsam
+    except:
+        raise ModuleNotFoundError("Optional dependency 'tsam' not found."
+                                  "Install via 'pip install tsam'")
+
+    # p_max_pu_norm = n.generators_t.p_max_pu.max()
+    # p_max_pu = n.generators_t.p_max_pu / p_max_pu_norm
+
+    # load_norm = n.loads_t.p_set.max()
+    # load = n.loads_t.p_set / load_norm
+
+    # inflow_norm = n.storage_units_t.inflow.max()
+    # inflow = n.storage_units_t.inflow / inflow_norm
+
+    # raw = pd.concat([p_max_pu, load, inflow], axis=1, sort=False)
+    empty_multi_col = pd.MultiIndex.from_tuples([],names=['component', 'key', 'asset'])
+    timeseries_df = pd.DataFrame(index=n.snapshots,columns=empty_multi_col)
+    for component in n.all_components:
+        pnl = n.pnl(component)
+        for key in pnl.keys():
+            if not pnl[key].empty:
+                df = pnl[key].copy()
+                df.columns = pd.MultiIndex.from_product([[component], [key], df.columns])
+
+                timeseries_df = pd.concat([timeseries_df, df], axis=1)
+                # to_drop = timeseries_df.columns[timeseries_df.columns.duplicated()]
+                # if not to_drop.empty:
+                #     logger.warning("There are duplicated columns which are dropped : \n {}".format(to_drop))
+                #     timeseries_df.drop(to_drop, axis=1, inplace=True)
+
+
+        annual_max = timeseries_df.groupby(level=0).max().replace(0,1)
+        timeseries_agg = timeseries_df.div(annual_max, level=0)
+
+
+    empty_multi_i = pd.MultiIndex.from_tuples([],names=['investment_period', 'snapshot'])
+    new_weightings = pd.DataFrame(index=empty_multi_i)
+    values_t = pd.DataFrame(index=empty_multi_i, columns=empty_multi_col)
+    for year in n.snapshots.levels[0]:
+        logger.info("segementation of year {}".format(year))
+
+        raw = timeseries_agg.loc[year]
+        agg = tsam.TimeSeriesAggregation(raw, hoursPerPeriod=len(raw),
+                                         noTypicalPeriods=1, noSegments=int(segments),
+                                         segmentation=True, solver=solver_name)
+
+        segmented = agg.createTypicalPeriods()
+
+        weightings = segmented.index.get_level_values("Segment Duration")
+        offsets = np.insert(np.cumsum(weightings[:-1]), 0, 0)
+        timesteps = [raw.index[0] + pd.Timedelta(f"{offset}h") for offset in offsets]
+        snapshots = pd.MultiIndex.from_product([[year], pd.DatetimeIndex(timesteps)])
+        weightings = pd.Series(weightings, index=snapshots, name="weightings", dtype="float64")
+        new_weightings = pd.concat([new_weightings, weightings])
+
+        values_t = pd.concat([values_t, segmented.mul(annual_max.loc[year]).set_index(snapshots)])
+
+    n.set_snapshots(new_weightings.index)
+    n.snapshot_weightings = n.snapshot_weightings.mul(new_weightings[0], axis=0)
+
+    for component, key in values_t.columns.droplevel(2).unique():
+        n.pnl(component)[key] = values_t[component, key]
+
+    return n
 
 def prepare_timeseries(n, normed):
     """
