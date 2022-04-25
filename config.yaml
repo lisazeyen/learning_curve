@@ -1,4 +1,4 @@
-run: "high_spatial"
+run: "base_scenarios"
 
 logging:
   level: INFO
@@ -10,11 +10,11 @@ scenario:
   sector_opts: [Co2L-73sn-notarget-1p5, Co2L-3h-notarget-1p5, Co2L-25sn-notarget-1p5, Co2L-146sn-notarget-1p5]
   investment_periods: [2020, 2025, 2030, 2035, 2040, 2045, 2050]
 
-countries: [] # ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
+countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
-one_node: False
+one_node: True
 # cluster residential and services heat nodes together
 cluster_heat_nodes: True
 # cluster to representative regions

@@ -1118,16 +1118,16 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        run = "high_t_25sn"
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        run = "25sn_BAU"
         from vresutils import Dict
         import yaml
         snakemake = Dict()
         snakemake.config = Dict()
         snakemake.config["run"] = run
-        with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
-        # with open("/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml".format(snakemake.config["run"]), encoding='utf8') as f:
+        # with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        with open("/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml".format(snakemake.config["run"]), encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         snakemake.config["run"] = run
         #overwrite some options
@@ -1137,14 +1137,14 @@ if __name__ == "__main__":
         for item in outputs:
             snakemake.output[item] =  'results/{name}/csvs/{item}.csv'.format(name=snakemake.config['run'],item=item)
 
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/")
-        # os.chdir("/home/lisa/Documents/learning_curve/")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/")
+        os.chdir("/home/lisa/Documents/learning_curve/")
 
 
         snakemake.config["scenario"]["sector_opts"] = []
         # "/home/lisa/Documents/learning_curve/results/"
-        for file in os.listdir( "/home/lisa/mnt/lisa/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
-        # for file in os.listdir( "/home/lisa/Documents/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
+        # for file in os.listdir( "/home/lisa/mnt/lisa/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
+        for file in os.listdir( "/home/lisa/Documents/learning_curve/results/" + snakemake.config["run"] + "/postnetworks/"):
             if file.endswith(".nc"):
                 label = file.replace('elec_s_EU_', '')[:-3]
                 snakemake.config["scenario"]["sector_opts"].append(label)

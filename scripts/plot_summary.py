@@ -1159,17 +1159,17 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        run = "high_spatial"
-        # os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        run = "25sn_2p0"
+        os.chdir("/home/lisa/Documents/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
         snakemake = Dict()
         snakemake.config = Dict()
         snakemake.config["run"] =  run
-        with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
-        # with open('/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        # with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        with open('/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
         snakemake.config["run"] =  run
@@ -1201,8 +1201,8 @@ if __name__ == "__main__":
         )
 
         snakemake.config["run"] =  run
-        os.chdir("/home/lisa/mnt/lisa/learning_curve")
-        # os.chdir("/home/lisa/Documents/learning_curve")
+        # os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        os.chdir("/home/lisa/Documents/learning_curve")
 
     sols_dict = {
         (str(clusters), str(lv), sector_opt): "results/"

@@ -26,7 +26,7 @@ from pypsa_learning.linopt import (
     write_constraint,
     set_conref,
 )
-from pypsa_learning.temporal_clustering import aggregate_snapshots
+from pypsa_learning.temporal_clustering import aggregate_snapshots, apply_time_segmentation
 from pypsa_learning.learning import (
     add_learning,
     experience_curve,
@@ -1017,7 +1017,8 @@ def set_temporal_aggregation(n, opts):
         m = re.match(r"^\d+sn$", o, re.IGNORECASE)
         if m is not None:
             sn = int(m.group(0).split("sn")[0])
-            n.set_snapshots(n.snapshots[::sn])
+            start = int(m.group(0).split("sn")[1])
+            n.set_snapshots(n.snapshots[start::sn])
             n.snapshot_weightings *= sn
         # typical periods
         m = re.match(r"^\d+p\d\d+h", o, re.IGNORECASE)
@@ -1052,6 +1053,10 @@ def set_temporal_aggregation(n, opts):
                 extremePeriodMethod=extremePeriodMethod,
                 solver="gurobi_direct",
             )
+        if "SEG" in o:
+            segments = int(o.replace("SEG",""))
+            logger.info("use temporal segmentation with {} segments".format(segments))
+            n = apply_time_segmentation(n, segments, solver_name="gurobi")
     return n
 
 
@@ -1591,7 +1596,7 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
         # heat profile
         cols = n.loads_t.p_set.columns[n.loads_t.p_set.columns.str.contains("heat")
                                        & ~n.loads_t.p_set.columns.str.contains("industry")]
-        profile = n.loads_t.p_set[cols] / n.loads_t.p_set[cols].groupby(level=0).max()
+        profile = n.loads_t.p_set[cols].div(n.loads_t.p_set[cols].groupby(level=0).max(), level=0)
         # to deal if max value is zero
         profile.fillna(0, inplace=True)
         profile.rename(columns=n.loads.bus.to_dict(), inplace=True)
@@ -2298,7 +2303,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-1p5-notarget-146sn",
+            sector_opts="Co2L-1p5-notarget-25sn",
             clusters="37",
         )
 
@@ -2383,7 +2388,7 @@ if __name__ == "__main__":
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
         n.carriers.loc["DAC", "global_capacity"] = 10
-
+#%%
     # aggregate network temporal
     if snakemake.config["temporal_presolve"] != "None":
         m = set_temporal_aggregation(n.copy(), [snakemake.config["temporal_presolve"]])
