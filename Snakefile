@@ -110,6 +110,20 @@ rule make_summary_sec:
     script:
         'scripts/make_summary2.py'
 
+rule rerun_for_shadow_prices:
+    input:
+        network="results/" + config['run'] +"/postnetworks/elec_s_EU_{sector_opts}.nc",
+    output:
+        network="results/" + config['run'] +"/postnetworks/elec_s_EU_{sector_opts}_with_shadowprices.nc",
+    threads: 16
+    resources: mem_mb=30000
+    log:
+        solver="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_solver_with_shadowprices.log",
+        python="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_python_with_shadowprices.log",
+        memory="results/" + config['run'] + "/logs/elec_s_EU_{sector_opts}_sec_memory_with_shadowprices.log"
+    benchmark: "results/" + config['run'] +"/postnetworks/elec_s_EU_{sector_opts}_with_shadowprices.nc"
+    script: "scripts/rerun_for_shadow_prices.py"
+
 rule plot_summary:
     input:
         costs_csv="results"  + '/' + config['run'] + '/csvs/costs.csv',
