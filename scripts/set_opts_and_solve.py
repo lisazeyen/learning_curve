@@ -116,7 +116,7 @@ override_component_attrs["Link"].loc["p4"] = [
 
 import os
 
-os.environ["NUMEXPR_MAX_THREADS"] = str(snakemake.threads)
+#os.environ["NUMEXPR_MAX_THREADS"] = str(snakemake.threads)
 
 # FUNCTIONS ---------------------------------------------------------------
 aggregate_dict = {
@@ -1017,7 +1017,13 @@ def set_temporal_aggregation(n, opts):
         m = re.match(r"^\d+sn$", o, re.IGNORECASE)
         if m is not None:
             sn = int(m.group(0).split("sn")[0])
+            n.set_snapshots(n.snapshots[::sn])
+            n.snapshot_weightings *= sn
+        m = re.match(r"^\d+sn\d\d$", o, re.IGNORECASE)
+        if m is not None:
+            sn = int(m.group(0).split("sn")[0])
             start = int(m.group(0).split("sn")[1])
+            logger.info("Take every {} snapshot with starting snapshot {}".format(sn, start))
             n.set_snapshots(n.snapshots[start::sn])
             n.snapshot_weightings *= sn
         # typical periods
@@ -1266,8 +1272,16 @@ def set_max_growth(n):
     # Offshore wind ####
     # offshore wind maximum growth in Germany 2.08 GW between 2015
     # https://www.iea.org/articles/renewables-2020-data-explorer?mode=market&region=Germany&product=Offshore+wind
-    n.carriers.loc[["offwind-ac", "offwind-dc"], "max_growth"] = 2.08 * 1e3/ DE_share
+    # for case no endogenous learning on offshore
+    if "offwind" not in n.carriers.index:
+        n.add("Carrier", name="offwind")
+        offwind_i = n.generators[n.generators.carrier.str.contains("offwind")].index
+        n.generators.loc[offwind_i, "carrier"] = "offwind"
 
+    n.carriers.loc["offwind", "max_growth"] = 2.08 * 1e3/ DE_share
+    if any(["maxcap" in o for o in opts]):
+        max_cap  = float([o.split("maxcap")[1] for o in opts if "maxcap" in o][0])
+        n.carriers.loc["offwind", "max_capacity"] = max_cap*1e6
 
     return n
 
@@ -1481,7 +1495,7 @@ def add_carbon_target(n, snapshots):
 
 def add_local_res_constraint(n, snapshots):
     c, attr = "Generator", "p_nom"
-    res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop"]
+    res = ["offwind-ac", "offwind-dc", "onwind", "solar", "solar rooftop", "offwind"]
     n.df(c)["country"] = (
         n.df(c).rename(lambda x: x[:2] if x[:2].isupper() else "EU").index
     )
@@ -1569,7 +1583,7 @@ def add_capacity_constraint(n, snapshots):
     define_constraints(n, lhs, ">=", rhs, "Carrier", "min_cap")
 
 
-def add_retrofit_gas_boilers_constraint(n, snapshots):
+def add_retrofit_gas_boilers_constraint(n, snapshots, heat_must_run=False):
     """Allow retrofitting of existing gas boilers to H2 boilers"""
     logger.info("Add constraint for retrofitting gas boilers to H2 boilers.")
     c, attr = "Link", "p"
@@ -1588,7 +1602,7 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
     gas_boiler_cap = get_var(n, c, "p_nom").loc[gas_boiler_i]
     gas_boiler_cap_t = expand_series(gas_boiler_cap, snapshots).T
 
-    if snakemake.config["heat_must_run"]:
+    if heat_must_run:
         n.links_t.p_max_pu.drop(h2_i.union(gas_boiler_i), axis=1, inplace=True,
                                 errors="ignore")
         n.links_t.p_min_pu.drop(h2_i.union(gas_boiler_i), axis=1, inplace=True,
@@ -1615,7 +1629,7 @@ def add_retrofit_gas_boilers_constraint(n, snapshots):
         lhs = linexpr((-1, h2_p), (1, gas_boiler_cap_t.values), (-1, gas_boiler_p.values))
     rhs = 0.0
     define_constraints(n, lhs, ">=", rhs, "Link", "retro_gasboiler")
-    if snakemake.config["heat_must_run"]:
+    if heat_must_run:
         define_constraints(n, lhs, "<=", rhs, "Link", "retro_gasboiler_lb")
 
 def add_retrofit_OCGT_constraint(n, snapshots):
@@ -1641,7 +1655,7 @@ def add_retrofit_OCGT_constraint(n, snapshots):
 
 
 # --------------------------------------------------------------------
-def prepare_network(n, solve_opts=None):
+def prepare_network(n, opts, snakemake, solve_opts=None):
     """Add solving options to the network before calling the lopf.
 
     Solving options (solve_opts (type dict)), keys which effect the network in
@@ -1669,7 +1683,7 @@ def prepare_network(n, solve_opts=None):
             add_carbon_target(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
-                add_retrofit_gas_boilers_constraint(n, snapshots)
+                add_retrofit_gas_boilers_constraint(n, snapshots, snakemake.config["heat_must_run"])
             if snakemake.config["OCGT_retrofit"]:
                 add_retrofit_OCGT_constraint(n, snapshots)
             if snakemake.config["capacity_constraint"]:
@@ -1687,7 +1701,7 @@ def prepare_network(n, solve_opts=None):
             add_carbon_budget_constraint(n, snapshots)
             add_local_res_constraint(n, snapshots)
             if snakemake.config["h2boiler_retrofit"]:
-                add_retrofit_gas_boilers_constraint(n, snapshots)
+                add_retrofit_gas_boilers_constraint(n, snapshots, snakemake.config["heat_must_run"])
             if snakemake.config["OCGT_retrofit"]:
                 add_retrofit_OCGT_constraint(n, snapshots)
             if snakemake.config["capacity_constraint"]:
@@ -2303,7 +2317,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-1p5-notarget-25sn",
+            sector_opts="Co2L-146sn-1p5-notarget",
             clusters="37",
         )
 
@@ -2314,8 +2328,6 @@ if __name__ == "__main__":
     n = pypsa.Network(
         snakemake.input.network, override_component_attrs=override_component_attrs
     )
-    # TODO
-    # snakemake.config["co2_budget"]["1p5"] = 34.2
 
     # fix for current pypsa-eur-sec version
     co2_i = n.stores[n.stores.carrier=="co2 stored"].index
@@ -2378,9 +2390,13 @@ if __name__ == "__main__":
     nuclear_i = n.links[n.links.carrier == "nuclear"].index
     n.links.loc[nuclear_i, "lifetime"] = 60.0
     # add extendable nuclear generators
-    df = n.links.loc[nuclear_i].reset_index().groupby("bus1").first().rename(columns={"index":"name"}).set_index("name")
+    if snakemake.config["one_node"]:
+        index_col="index"
+    else:
+        index_col="name"
+    df = n.links.loc[nuclear_i].reset_index().groupby("bus1").first().reset_index().set_index(index_col)
     df = pd.concat([df.rename(index= lambda x: x.split("-")[0]+"-"+str(year)) for year in years])
-    df["build_year"] = df.reset_index().name.apply(lambda x: int(x.split("-")[1])).values
+    df["build_year"] = df.rename(index=lambda x: int(x.split("-")[1])).index
     df["p_nom"] = 0.
     df["p_nom_extendable"] = True
     import_components_from_dataframe(n, df, "Link")
@@ -2388,7 +2404,7 @@ if __name__ == "__main__":
     # TODO DAC global capacity check
     if "DAC" in n.carriers.index:
         n.carriers.loc["DAC", "global_capacity"] = 10
-#%%
+#
     # aggregate network temporal
     if snakemake.config["temporal_presolve"] != "None":
         m = set_temporal_aggregation(n.copy(), [snakemake.config["temporal_presolve"]])
@@ -2445,7 +2461,7 @@ if __name__ == "__main__":
             solver_options,
             keep_shadowprices,
             n,
-        ) = prepare_network(n)
+        ) = prepare_network(n, opts, snakemake)
         # solver_options["threads"] = 8
         #
 
@@ -2495,6 +2511,7 @@ if __name__ == "__main__":
                 typical_period=typical_period,
                 keep_references=True,
                 # warmstart=True,
+                # keep_files=True,
                 # store_basis=True,
             )
             # for debugging

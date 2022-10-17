@@ -632,14 +632,14 @@ def define_learning_constraint(n, snapshots):
 
 
 def define_learning_variables(n, snapshots, segments):
-    """Define binaries for technology learning.
+    """Define SOS2 variables for technology learning.
 
-    Define continuos variabe for technology learning for each
+    Define continuos variable for technology learning for each
     investment period, each carrier with learning rate and each point of
     the linear interpolation of the learning curve
 
-    learning        : continuos variable [0,1] which is per period and carrier
-                      a special ordered set of type 2 (SOS2)
+    learning        : continuos variable [0,1] which is defined per period and
+                      carrier, a special ordered set of type 2 (SOS2)
     Input:
     ------
         n          : pypsa network
@@ -966,6 +966,8 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
     lhs = linexpr((-1, cum_cost))
 
     if time_delay:
+        # save information in network
+        n._time_delay = 1
         # learning at previous investment period
         learning_shift = learning.shift().dropna()
         # TC(t) = TC(t-1) + slope(t-1) * [cap(t) - cap(t-1)]
@@ -1022,7 +1024,7 @@ def define_cumulative_cost(n, points, investments, segments, learn_i, time_delay
         rhs.iloc[0, :] = -points_y_fit.iloc[0].xs(0, level=1)
 
     else:
-
+        n._time_delay = 0
         lhs += (
             linexpr((points_y_fit.reindex(learning.columns, axis=1), learning))
             .groupby(level=0, axis=1)

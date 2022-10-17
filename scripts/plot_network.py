@@ -749,7 +749,7 @@ if __name__ == "__main__":
         snakemake = Dict()
         # "results/split_regions/configs/"
         # with open('/home/lisa/Documents/learning_curve/results/newrates_73sn_1p7/configs/config.yaml', encoding='utf8') as f:
-        with open('/home/lisa/mnt/lisa/learning_curve/results/high_spatial/configs/config.yaml', encoding='utf8') as f:
+        with open('/home/lisa/mnt/lisa/learning_curve/results/10days_transportfast2/configs/config.yaml', encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
         #overwrite some options
         sector_opts="Co2L-25sn-notarget-1p5"

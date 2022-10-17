@@ -1351,7 +1351,10 @@ def assign_solution(
                 capital_cost.loc[sns[0][0]].fillna(
                     n.carriers.loc[learn_i, "initial_cost"], inplace=True
                 )
-                capital_cost.fillna(method="ffill", inplace=True)
+                if n._time_delay:
+                    capital_cost.fillna(method="bfill", inplace=True)
+                else:
+                    capital_cost.fillna(method="ffill", inplace=True)
                 # remove errors because of very small investment per period costs
                 capital_cost = capital_cost[capital_cost.diff()<=0].fillna(capital_cost.shift().fillna(capital_cost.iloc[0,:]))
                 for comp, attribute in nominal_attrs.items():
@@ -1487,9 +1490,11 @@ def assign_solution(
         except KeyError:
             logger.warning("Shadow prices of {} {} could not be saved".format(c, attr))
 
+    period_weighting = n.investment_period_weightings.objective_weightings
+    weightings = n.snapshot_weightings.objective_weightings.mul(period_weighting, level=0, axis=0).loc[sns]
     # correct prices for snapshot weightings
     n.buses_t.marginal_price.loc[sns] = n.buses_t.marginal_price.loc[sns].divide(
-        n.snapshot_weightings.loc[sns, "objective_weightings"], axis=0
+        weightings, axis=0
     )
 
     # discard remaining if wanted

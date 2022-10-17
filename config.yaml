@@ -1,4 +1,4 @@
-run: "base_scenarios"
+run: "high_t_25sn_startpoint"
 
 logging:
   level: INFO
@@ -7,10 +7,17 @@ logging:
 scenario:
   lv: [1.0]
   clusters: [37]
-  sector_opts: [Co2L-73sn-notarget-1p5, Co2L-3h-notarget-1p5, Co2L-25sn-notarget-1p5, Co2L-146sn-notarget-1p5]
+  sector_opts: [Co2L-25sn0-1p5-notarget, Co2L-25sn1-1p5-notarget,Co2L-25sn2-1p5-notarget, Co2L-25sn3-1p5-notarget, Co2L-25sn4-1p5-notarget, Co2L-25sn5-1p5-notarget,Co2L-25sn6-1p5-notarget, Co2L-25sn7-1p5-notarget, Co2L-25sn8-1p5-notarget, Co2L-25sn9-1p5-notarget, Co2L-25sn10-1p5-notarget, Co2L-25sn11-1p5-notarget,
+       Co2L-25sn12-1p5-notarget, Co2L-25sn13-1p5-notarget,
+       Co2L-25sn14-1p5-notarget, Co2L-25sn15-1p5-notarget,
+       Co2L-25sn16-1p5-notarget, Co2L-25sn17-1p5-notarget,
+       Co2L-25sn18-1p5-notarget, Co2L-25sn19-1p5-notarget,
+       Co2L-25sn20-1p5-notarget, Co2L-25sn21-1p5-notarget,
+       Co2L-25sn22-1p5-notarget, Co2L-25sn23-1p5-notarget,
+       Co2L-25sn24-1p5-notarget]
   investment_periods: [2020, 2025, 2030, 2035, 2040, 2045, 2050]
 
-countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
+countries:  ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 # sets technical potential at each bus for renewables
 tech_limit: True
 # cluster all nodes to one representative
@@ -251,6 +258,11 @@ plotting:
     "coal" : "#707070"
     "lignite" : "#9e5a01"
     "oil" : "#262626"
+    "imported oil" : "#6b6b6b"
+    "shipping oil" : "#550955"
+    "land transport oil" : "#566a6a"
+    "naphtha for industry" : "#c0b1c0"
+    "kerosene for aviation" : "#865050"
     "H2" : "#ea048a"
     "H2 Store" : "#ea048a"
     "H2 boiler" : "#fd7bc7"

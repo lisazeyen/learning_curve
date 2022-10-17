@@ -40,3 +40,8 @@ ax.set_xlabel("time \n [hours]")
 
 plt.savefig(snakemake.output.memory_plot,
             bbox_inches="tight")
+
+
+solver = pd.DataFrame({"Matrix range": [2e3,2e2], "Objective range": [5e5,1e6],
+                       "Bounds range": [6e9, 8e8], "RHS range": [2e8, 3e9]},
+                      index=["Chalmers", "TUB"])

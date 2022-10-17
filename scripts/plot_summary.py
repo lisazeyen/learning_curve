@@ -53,6 +53,20 @@ pypsa_to_database = {
     "solar": "solar-utility",
 }
 
+missing_colors = {
+    "imported oil" : "#6b6b6b",
+    "shipping oil" : "#550955",
+    "land transport oil" : "#566a6a",
+    "naphtha for industry" : "#c0b1c0",
+    "kerosene for aviation" : "#865050",
+    "shipping oil emissions" : "#550955",
+    "land transport oil emissions" : "#566a6a",
+    "oil emissions" : "#6b6b6b",
+    "oil emissions industry" : "#6b6b6b",
+    "H2 for industry": "#a30260",
+    'H2 for shipping': "#b999ac",
+    'land transport fuel cell': "#510130",
+    }
 
 def prepare_costs(cost_file, discount_rate, lifetime):
     """
@@ -152,12 +166,12 @@ def rename_techs(label):
         "DC": "transmission lines",
         "B2B": "transmission lines",
         # "H2": "hydrogen storage",
-        "H2 for industry": "H2",
-        "land transport fuel cell": "H2",
-        "H2 for shipping": "H2",
-        "oil emissions": "co2",
-        "shipping oil emissions": "co2",
-        "land transport oil emissions": "co2"
+        # "H2 for industry": "H2",
+        # "land transport fuel cell": "H2",
+        # "H2 for shipping": "H2",
+        # "oil emissions": "co2",
+        # "shipping oil emissions": "co2",
+        # "land transport oil emissions": "co2"
     }
 
     for ptr in prefix_to_remove:
@@ -439,6 +453,8 @@ def plot_balances():
             else i
             for i in df.index
         ]
+
+        df.rename(index={"oil emissions": "oil emissions industry"}, inplace=True)
 
         df = df.groupby(df.index.map(rename_techs)).sum()
 
@@ -1051,8 +1067,7 @@ def plot_capacities():
     for carrier in carriers:
         caps = capacities.loc[carrier].unstack().T
         caps.drop(caps.columns[caps.sum()==0], axis=1, inplace=True)
-        caps.drop("Co2L-25sn-notarget-1p5-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0",
-                  axis=1,inplace=True, errors="ignore")
+        if caps.empty: continue
         s = 3*["-", "--", "-.", ":", "-", "--", "-.", ":"]
         ls = s[:len(caps.columns)]
         caps.plot(title=carrier, style=ls, lw=2, grid=True)
@@ -1159,7 +1174,7 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        run = "25sn_2p0"
+        run =  "transportfast_shadowprices"
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
         # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         from vresutils import Dict
@@ -1218,6 +1233,9 @@ if __name__ == "__main__":
     }
 
     n_header = 4
+
+    for k,v in missing_colors.items():
+        snakemake.config["plotting"]["tech_colors"][k] = v
 
     plot_costs()
     plot_carbon_budget_distribution()

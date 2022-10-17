@@ -169,9 +169,15 @@ from pypsa_learning.linopt import set_int_index
 
 problem_fn = "/home/lisa/Documents/learning_curve/mip_start/test.lp"
 problem_fn = "/home/lisa/Documents/learning_curve/mip_start/pypsa-problem-at5rxsrw.lp"
+problem_fn = "/tmp/pypsa-problem-08iqvbzr.lp"
 m = gurobipy.read(problem_fn)
+logging.disable(50)
+for key, value in solver_options.items():
+    m.setParam(key, value)
+m.setParam("DualReductions", 0)
 m.optimize()
-
+m.computeIIS()
+m.write("/home/lisa/Documents/learning_curve/mip_start/debug.ilp")
 variables_sol = pd.Series({v.VarName: v.x for v in m.getVars()}).pipe(set_int_index)
 try:
     constraints_dual = pd.Series({c.ConstrName: c.Pi for c in m.getConstrs()}).pipe(

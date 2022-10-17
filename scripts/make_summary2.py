@@ -624,6 +624,11 @@ def calculate_supply_energy(n, label, supply_energy):
             else:
                 weightings = n.snapshot_weightings.store_weightings
 
+            if i in ["oil", "co2", "H2"]:
+                if c.name=="Load":
+                    c.df.loc[items, "carrier"] = [load.split("-202")[0] for load in items]
+                if i=="oil" and c.name=="Generator":
+                    c.df.loc[items, "carrier"] = "imported oil"
             s = (
                 c.pnl.p[items]
                 .multiply(weightings, axis=0)
@@ -1120,7 +1125,7 @@ if __name__ == "__main__":
         import os
         # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        run = "25sn_BAU"
+        run = "transportfast_shadowprices"
         from vresutils import Dict
         import yaml
         snakemake = Dict()
