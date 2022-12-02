@@ -140,6 +140,11 @@ def rename_techs(label):
         "ground heat pump",
         "resistive heater",
         "Fischer-Tropsch",
+        "H2 for shipping",
+        "H2 for industry",
+        "land transport fuel cell",
+        "land transport oil",
+        "shipping oil"
     ]
 
     rename_if_contains_dict = {
@@ -473,7 +478,11 @@ def plot_balances():
 
         if df.empty:
             continue
-
+        grouper = ["H2 for industry", "H2 for shipping",
+                   "land transport fuel cell", "land transport oil",
+                   "shipping oil"]
+        for group in grouper:
+            df.rename(index=lambda x: group if group in x else x, inplace=True)
         df = df.groupby(df.index).sum()
 
         new_index = preferred_order.intersection(df.index).append(
@@ -991,14 +1000,14 @@ def learning_cost_vs_curve():
         fig, ax = plt.subplots()
         plt.title(scenario[-1])
 
-        plt.step(
-            points.xs("x_fit", level=1, axis=1),
-            interpolated_costs,
-            where="post",#"pre",
-            lw=2,
-            ls=":",
-            color="green",
-        )
+        # plt.step(
+        #     points.xs("x_fit", level=1, axis=1),
+        #     interpolated_costs,
+        #     where="post",#"pre",
+        #     lw=2,
+        #     ls=":",
+        #     color="green",
+        # )
 
         # plt.vlines(points[scenario[-1], "x_fit"].values, ymin=y.min()/1e3,ymax=y.max()/1e3,
         #             linestyle="-", color="grey", alpha=0.2)
@@ -1174,16 +1183,16 @@ if __name__ == "__main__":
     # Detect running outside of snakemake and mock snakemake for testing
     if "snakemake" not in globals():
         import os
-        run =  "transportfast_shadowprices"
+        run =  "c0_sensi"
         os.chdir("/home/lisa/Documents/learning_curve/scripts")
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve/scripts")
+        # os.chdir("/home/lisa/mnt/learning_curve/scripts")
         from vresutils import Dict
         import yaml
         snakemake = Dict()
         snakemake = Dict()
         snakemake.config = Dict()
         snakemake.config["run"] =  run
-        # with open('/home/lisa/mnt/lisa/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
+        # with open('/home/lisa/mnt/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
         with open('/home/lisa/Documents/learning_curve/results/{}/configs/config.yaml'.format(snakemake.config["run"]), encoding='utf8') as f:
             snakemake.config = yaml.safe_load(f)
             config  = snakemake.config
@@ -1216,7 +1225,7 @@ if __name__ == "__main__":
         )
 
         snakemake.config["run"] =  run
-        # os.chdir("/home/lisa/mnt/lisa/learning_curve")
+        # os.chdir("/home/lisa/mnt/learning_curve")
         os.chdir("/home/lisa/Documents/learning_curve")
 
     sols_dict = {

@@ -683,7 +683,8 @@ def define_storage_unit_constraints(n, sns, typical_period):
             soc.shift().loc[sns_with_inv[1:]],
             noncyclic_i,
         )
-        lhs += masked_term(eff_stand_periodic, previous_soc_periodic, period_i)
+        if len(period_i):
+            lhs += masked_term(eff_stand_periodic, previous_soc_periodic, period_i)
 
         # rhs consider inflow and initial state of charge
         rhs = -get_as_dense(n, c, "inflow", sns).reindex(sns_with_inv, level=1).mul(eh)

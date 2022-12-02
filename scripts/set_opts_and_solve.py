@@ -396,9 +396,11 @@ def cluster_to_regions(n):
             )
 
     # drop not needed components --------------------------------------------
-    to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
-    to_drop = m.links[m.links.carrier.isin(to_drop)].index
-    m.mremove("Link", to_drop)
+    if snakemake.config["remove_infra"]:
+        logger.info("remove gas grid infrastructure to speed up optimisation")
+        to_drop = ["H2 pipeline", "H2 pipeline retrofitted", "Gas pipeline", "DC"]
+        to_drop = m.links[m.links.carrier.isin(to_drop)].index
+        m.mremove("Link", to_drop)
     # TODO
     # dac_i = m.links[m.links.carrier == "DAC"].index
     # if snakemake.config["cluster_heat_nodes"]:
@@ -920,7 +922,6 @@ def set_scenario_opts(n, opts):
                         )
                 # TODO
                 if tech == "H2 electrolysis":
-                    n.carriers.loc[tech, "global_factor"]  = 0.4
                     # todo assume always local learning for H2 electrolysis
                     logger.info("assume local learning for H2 Electrolysis.")
                     n.carriers.loc[tech, "global_factor"]  = 1.
@@ -928,13 +929,22 @@ def set_scenario_opts(n, opts):
                     # todo global capacity
                     n.carriers.loc[tech, "global_capacity"] = 1e3
                     n.carriers.loc["H2 electrolysis", "max_capacity"] = 5e6 / factor
+                    sensi = [m for m in opts if re.match(r"^c\d+p\d", m)!=None]
+                    if len(sensi):
+                        s_factor = float(sensi[0].replace("p",".").replace("c",""))
+                        logger.info(f"Increase H2 electrolysis c0 by factor {s_factor}")
+                        n.carriers.loc["H2 Electrolysis", "initial_cost"] *= s_factor
                 if tech == "H2 Electrolysis":
-                    n.carriers.loc[tech, "global_factor"]  = 0.4
                     # todo assume always local learning for H2 electrolysis
                     logger.info("assume local learning for H2 Electrolysis.")
                     n.carriers.loc[tech, "global_factor"]  = 1.
                     factor = 1.
                     n.carriers.loc["H2 Electrolysis", "max_capacity"] = 6e6 / factor
+                    sensi = [m for m in opts if re.match(r"^c\d+p\d", m)!=None]
+                    if len(sensi):
+                        s_factor = float(sensi[0].replace("p",".").replace("c",""))
+                        logger.info(f"Increase H2 electrolysis c0 by factor {s_factor}")
+                        n.carriers.loc["H2 Electrolysis", "initial_cost"] *= s_factor
                 if tech == "H2 Fuel Cell":
                     n.carriers.loc["H2 Fuel Cell", "max_capacity"] = 2e4
                 if tech == "DAC":
@@ -1063,6 +1073,10 @@ def set_temporal_aggregation(n, opts):
             segments = int(o.replace("SEG",""))
             logger.info("use temporal segmentation with {} segments".format(segments))
             n = apply_time_segmentation(n, segments, solver_name="gurobi")
+        if o == "timew":
+            weightings = pd.read_csv(snakemake.input.timew, index_col=[0,1])
+            n.set_snapshots(weightings.index)
+            n.snapshot_weightings = weightings
     return n
 
 
@@ -2317,7 +2331,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "set_opts_and_solve",
-            sector_opts="Co2L-146sn-1p5-notarget",
+            sector_opts="Co2L-timew-1p7-notarget-transportfast-notarget-learnH2xElectrolysisp0-learnsolarp0-learnonwindp0-learnoffwindp0-c1p1",
             clusters="37",
         )
 
